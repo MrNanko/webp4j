@@ -33,8 +33,19 @@ public class NativeLibraryLoaderUtils {
                 );
             }
 
-            File tempLibraryFile = Files.createTempFile("", libraryFileName).toFile();
-            tempLibraryFile.deleteOnExit();
+            File tempLibraryFile = Files.createTempFile("webp4j-", "-" + libraryFileName).toFile();
+
+            // Register a cleanup hook
+            final File fileToDelete = tempLibraryFile;
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                try {
+                    if (fileToDelete.exists()) {
+                        Files.delete(fileToDelete.toPath());
+                    }
+                } catch (Exception e) {
+                    // Ignore cleanup failures during JVM shutdown
+                }
+            }));
 
             try (FileOutputStream out = new FileOutputStream(tempLibraryFile)) {
                 byte[] buffer = new byte[8192];
