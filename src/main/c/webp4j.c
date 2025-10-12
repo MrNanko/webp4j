@@ -61,7 +61,7 @@ void freeUint8(uint8_t* ptr) {
  * - false (JNI_FALSE) if the operation fails.
  */
 JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_NativeWebP_getInfo
-  (JNIEnv *env, jobject obj, jbyteArray data, jintArray dimensions) {
+  (JNIEnv *env, jclass clazz, jbyteArray data, jintArray dimensions) {
 
     // Convert Java byte array to native uint8_t array
     jbyte* webp_data = (*env)->GetByteArrayElements(env, data, NULL);
@@ -134,7 +134,7 @@ JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_NativeWebP_getInfo
  * - A non-zero error code if the operation fails.
  */
 JNIEXPORT jint JNICALL Java_dev_matrixlab_webp4j_NativeWebP_getFeatures
-  (JNIEnv *env, jobject obj, jbyteArray data, jint dataSize, jobject featuresObj) {
+  (JNIEnv *env, jclass clazz, jbyteArray data, jint dataSize, jobject featuresObj) {
 
     // Retrieve the pointer to the input byte array.
     jbyte* webpData = (*env)->GetByteArrayElements(env, data, NULL);
@@ -212,7 +212,7 @@ JNIEXPORT jint JNICALL Java_dev_matrixlab_webp4j_NativeWebP_getFeatures
  * - A Java byte array containing the encoded WebP image, or NULL if encoding fails.
  */
 JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeRGB
-  (JNIEnv *env, jobject obj, jbyteArray image, jint width, jint height, jint stride, jfloat quality) {
+  (JNIEnv *env, jclass clazz, jbyteArray image, jint width, jint height, jint stride, jfloat quality) {
 
     // Convert Java byte array to native uint8_t array
     uint8_t* rgb = jByteArrayToUint8(env, image);
@@ -275,7 +275,7 @@ JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeRGB
  * - A Java byte array containing the encoded WebP image, or NULL if encoding fails.
  */
 JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeRGBA
-  (JNIEnv *env, jobject obj, jbyteArray image, jint width, jint height, jint stride, jfloat quality) {
+  (JNIEnv *env, jclass clazz, jbyteArray image, jint width, jint height, jint stride, jfloat quality) {
 
     // Convert Java byte array to native uint8_t array
     uint8_t* rgba = jByteArrayToUint8(env, image);
@@ -338,7 +338,7 @@ JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeRGBA
  * - A Java byte array containing the encoded lossless WebP image, or NULL if encoding fails.
  */
 JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeLosslessRGB
-  (JNIEnv *env, jobject obj, jbyteArray image, jint width, jint height, jint stride) {
+  (JNIEnv *env, jclass clazz, jbyteArray image, jint width, jint height, jint stride) {
 
     // Convert Java byte array to native uint8_t array
     uint8_t* rgb = jByteArrayToUint8(env, image);
@@ -401,7 +401,7 @@ JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeLossless
  * - A Java byte array containing the encoded lossless WebP image, or NULL if encoding fails.
  */
 JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeLosslessRGBA
-  (JNIEnv *env, jobject obj, jbyteArray image, jint width, jint height, jint stride) {
+  (JNIEnv *env, jclass clazz, jbyteArray image, jint width, jint height, jint stride) {
 
     // Convert Java byte array to native uint8_t array
     uint8_t* rgba = jByteArrayToUint8(env, image);
@@ -465,7 +465,7 @@ JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeLossless
  * - false (JNI_FALSE) if decoding fails.
  */
 JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_NativeWebP_decodeRGBInto
-  (JNIEnv *env, jobject obj, jbyteArray data, jbyteArray outputBuffer, jint outputStride) {
+  (JNIEnv *env, jclass clazz, jbyteArray data, jbyteArray outputBuffer, jint outputStride) {
 
     // Get data size
     jsize data_size = (*env)->GetArrayLength(env, data);
@@ -534,7 +534,7 @@ JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_NativeWebP_decodeRGBInto
  * - false (JNI_FALSE) if decoding fails.
  */
 JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_NativeWebP_decodeRGBAInto
-  (JNIEnv *env, jobject obj, jbyteArray data, jbyteArray outputBuffer, jint outputStride) {
+  (JNIEnv *env, jclass clazz, jbyteArray data, jbyteArray outputBuffer, jint outputStride) {
 
     // Get data size
     jsize data_size = (*env)->GetArrayLength(env, data);
