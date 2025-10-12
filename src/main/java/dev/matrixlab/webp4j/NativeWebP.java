@@ -4,7 +4,6 @@ public class NativeWebP {
 
     private static volatile boolean nativeLibraryLoaded = false;
 
-    // Private constructor to prevent instantiation
     private NativeWebP() {
         throw new AssertionError("Cannot instantiate utility class.");
     }
