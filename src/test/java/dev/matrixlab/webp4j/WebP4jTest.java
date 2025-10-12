@@ -12,7 +12,7 @@ import java.nio.file.Paths;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class WebP4jTest {
+class WebP4jTest {
 
     private static final String TEST_RESOURCES_DIR = "src/test/resources/";
 
@@ -36,7 +36,7 @@ public class WebP4jTest {
     private static final String OUTPUT_DECODED_LOSSLESS_RGBA_PNG = TEST_RESOURCES_DIR + "decode_lossless_rgba.png";
 
     @Test
-    public void testGetWebPInfo() {
+    void testGetWebPInfo() {
         try {
             // Load WebP image file
             byte[] webPData = Files.readAllBytes(Paths.get(SOURCE_RGB_WEBP));
@@ -54,7 +54,7 @@ public class WebP4jTest {
     }
 
     @Test
-    public void testEncodeRGB() {
+    void testEncodeRGB() {
         try {
             // Load RGB image file
             BufferedImage bufferedImage = ImageIO.read(new File(SOURCE_RGB_PNG));
@@ -79,7 +79,7 @@ public class WebP4jTest {
     }
 
     @Test
-    public void testEncodeRGBA() {
+    void testEncodeRGBA() {
         try {
             // Load RGBA image file
             BufferedImage bufferedImage = ImageIO.read(new File(SOURCE_RGBA_PNG));
@@ -107,7 +107,7 @@ public class WebP4jTest {
      * Test method for decoding an RGB WebP image.
      */
     @Test
-    public void testDecodeRGBInto() throws IOException {
+    void testDecodeRGBInto() throws IOException {
         // Load WebP image file to decode
         byte[] webPData = Files.readAllBytes(Paths.get(OUTPUT_RGB_WEBP));
         assertNotNull(webPData, "WebP data should not be null.");
@@ -127,7 +127,7 @@ public class WebP4jTest {
      * Test method for decoding an RGBA WebP image.
      */
     @Test
-    public void testDecodeRGBAInto() throws IOException {
+    void testDecodeRGBAInto() throws IOException {
         // Load WebP image file to decode
         byte[] webPData = Files.readAllBytes(Paths.get(OUTPUT_RGBA_WEBP));
         assertNotNull(webPData, "WebP data should not be null.");
@@ -144,7 +144,7 @@ public class WebP4jTest {
     }
 
     @Test
-    public void testEncodeLosslessRGB() {
+    void testEncodeLosslessRGB() {
         try {
             // Load RGB image file
             BufferedImage bufferedImage = ImageIO.read(new File(SOURCE_RGB_PNG));
@@ -168,7 +168,7 @@ public class WebP4jTest {
     }
 
     @Test
-    public void testEncodeLosslessRGBA() {
+    void testEncodeLosslessRGBA() {
         try {
             // Load RGBA image file
             BufferedImage bufferedImage = ImageIO.read(new File(SOURCE_RGBA_PNG));
@@ -192,7 +192,7 @@ public class WebP4jTest {
     }
 
     @Test
-    public void testDecodeLosslessRGB() throws IOException {
+    void testDecodeLosslessRGB() throws IOException {
         // Load lossless WebP image file to decode
         byte[] webPData = Files.readAllBytes(Paths.get(OUTPUT_LOSSLESS_RGB_WEBP));
         assertNotNull(webPData, "Lossless WebP data should not be null.");
@@ -209,7 +209,7 @@ public class WebP4jTest {
     }
 
     @Test
-    public void testDecodeLosslessRGBA() throws IOException {
+    void testDecodeLosslessRGBA() throws IOException {
         // Load lossless WebP image file to decode
         byte[] webPData = Files.readAllBytes(Paths.get(OUTPUT_LOSSLESS_RGBA_WEBP));
         assertNotNull(webPData, "Lossless WebP data should not be null.");
@@ -226,35 +226,34 @@ public class WebP4jTest {
     }
 
     @Test
-    public void testWebPBitstreamFeatures() throws IOException {
+    void testWebPBitstreamFeatures() throws IOException {
         // Load WebP file for feature analysis
         byte[] webPData = Files.readAllBytes(Paths.get(OUTPUT_LOSSLESS_RGB_WEBP));
         assertNotNull(webPData, "WebP data should not be null");
         assertTrue(webPData.length > 0, "WebP data should not be empty");
 
-        // Create NativeWebP instance and features container
-        NativeWebP nativeWebP = new NativeWebP();
+        // Create features container
         WebPBitstreamFeatures features = new WebPBitstreamFeatures();
-        
+
         // Extract bitstream features
-        int status = nativeWebP.getFeatures(webPData, webPData.length, features);
+        int status = NativeWebP.getFeatures(webPData, webPData.length, features);
         VP8StatusCode statusCode = VP8StatusCode.getStatusCode(status);
         
         // Validate feature extraction succeeded
         assertEquals(VP8StatusCode.VP8_STATUS_OK, statusCode, "Failed to get WebP bitstream features");
         
         // Validate image dimensions
-        assertTrue(features.width > 0, "Image width should be positive, actual: " + features.width);
-        assertTrue(features.height > 0, "Image height should be positive, actual: " + features.height);
+        assertTrue(features.getWidth() > 0, "Image width should be positive, actual: " + features.getWidth());
+        assertTrue(features.getHeight() > 0, "Image height should be positive, actual: " + features.getHeight());
         
         // Validate compression format
-        assertTrue(features.format >= 0 && features.format <= 2, 
-                  "Format should be 0 (undefined/mixed), 1 (lossy), or 2 (lossless), actual: " + features.format);
+        assertTrue(features.getFormat() >= 0 && features.getFormat() <= 2,
+                  "Format should be 0 (undefined/mixed), 1 (lossy), or 2 (lossless), actual: " + features.getFormat());
         
         // Validate specific properties for lossless RGB image
         // Format should be 0 (undefined/mixed), 1 (lossy), or 2 (lossless)
-        assertEquals(2, features.format, "Expected lossless compression format");
-        assertFalse(features.hasAlpha, "RGB image should not have alpha channel");
-        assertFalse(features.hasAnimation, "Static image should not have animation");
+        assertEquals(2, features.getFormat(), "Expected lossless compression format");
+        assertFalse(features.isHasAlpha(), "RGB image should not have alpha channel");
+        assertFalse(features.isHasAnimation(), "Static image should not have animation");
     }
 }
