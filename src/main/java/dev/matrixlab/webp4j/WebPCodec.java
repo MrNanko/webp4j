@@ -9,15 +9,6 @@ import java.util.Arrays;
 
 public final class WebPCodec {
 
-    // Static dependency: initialize the NativeWebP instance.
-    private static final NativeWebP nativeWebP;
-
-    static {
-        // Using the default constructor.
-        nativeWebP = new NativeWebP();
-    }
-
-    // Private constructor to prevent instantiation.
     private WebPCodec() {
         throw new AssertionError("Cannot instantiate utility class.");
     }
@@ -31,7 +22,7 @@ public final class WebPCodec {
      */
     public static int[] getWebPInfo(byte[] webPData) throws IOException {
         int[] dimensions = new int[2];
-        boolean success = nativeWebP.getInfo(webPData, dimensions);
+        boolean success = NativeWebP.getInfo(webPData, dimensions);
 
         if (!success) {
             throw new IOException("Failed to retrieve WebP image information.");
@@ -75,12 +66,12 @@ public final class WebPCodec {
         // Encode the RGB/RGBA data to WebP format using nativeWebP.
         try {
             byte[] encodedWebP = encodeWithNativeLibrary(imageBytes, width, height, stride, quality, lossless, hasAlpha);
-            
+
             if (encodedWebP == null || encodedWebP.length == 0) {
                 String encodingType = lossless ? "Lossless" : "Lossy";
                 throw new IOException(encodingType + " WebP encoding failed.");
             }
-            
+
             return encodedWebP;
         } finally {
             // Clear the contents of the imageBytes and remove its reference to allow garbage collection.
@@ -133,13 +124,13 @@ public final class WebPCodec {
 
         WebPBitstreamFeatures features = new WebPBitstreamFeatures();
 
-        int status = nativeWebP.getFeatures(webPData, webPData.length, features);
+        int status = NativeWebP.getFeatures(webPData, webPData.length, features);
         VP8StatusCode code = VP8StatusCode.getStatusCode(status);
         if (code != VP8StatusCode.VP8_STATUS_OK) {
             throw new IOException("Failed to get WebP bitstream features, error code: " + code);
         }
 
-        boolean hasAlpha = features.hasAlpha;
+        boolean hasAlpha = features.isHasAlpha();
 
         // Calculate the stride for RGB (3 bytes per pixel) / RGBA (4 bytes per pixel).
         int outputStride = width * (hasAlpha ? 4 : 3);
@@ -150,8 +141,8 @@ public final class WebPCodec {
         try {
             // Decode the WebP data into the provided RGB/RGBA buffer.
             boolean success = hasAlpha
-                    ? nativeWebP.decodeRGBAInto(webPData, outputBuffer, outputStride)
-                    : nativeWebP.decodeRGBInto(webPData, outputBuffer, outputStride);
+                    ? NativeWebP.decodeRGBAInto(webPData, outputBuffer, outputStride)
+                    : NativeWebP.decodeRGBInto(webPData, outputBuffer, outputStride);
             if (!success) {
                 throw new IOException("Failed to decode WebP data into RGB buffer.");
             }
@@ -159,9 +150,8 @@ public final class WebPCodec {
             // Convert the decoded RGB/RGBA byte array into a BufferedImage.
             return WebPCodec.convertBytesToBufferedImage(width, height, outputBuffer);
         } finally {
-            // Clear the contents of the outputBuffer and remove its reference to allow garbage collection.
+            // Clear the contents of the outputBuffer to remove sensitive data.
             Arrays.fill(outputBuffer, (byte) 0);
-            outputBuffer = null;
         }
     }
 
@@ -174,19 +164,19 @@ public final class WebPCodec {
      * @param stride     Bytes per row
      * @param quality    Quality parameter (ignored for lossless)
      * @param lossless   True for lossless, false for lossy
-     * @param hasAlpha   True if image has alpha channel
+     * @param hasAlpha   True if image has an alpha channel
      * @return Encoded WebP byte array
      */
     private static byte[] encodeWithNativeLibrary(byte[] imageBytes, int width, int height, int stride,
                                                   float quality, boolean lossless, boolean hasAlpha) {
         if (lossless) {
             return hasAlpha
-                    ? nativeWebP.encodeLosslessRGBA(imageBytes, width, height, stride)
-                    : nativeWebP.encodeLosslessRGB(imageBytes, width, height, stride);
+                    ? NativeWebP.encodeLosslessRGBA(imageBytes, width, height, stride)
+                    : NativeWebP.encodeLosslessRGB(imageBytes, width, height, stride);
         } else {
             return hasAlpha
-                    ? nativeWebP.encodeRGBA(imageBytes, width, height, stride, quality)
-                    : nativeWebP.encodeRGB(imageBytes, width, height, stride, quality);
+                    ? NativeWebP.encodeRGBA(imageBytes, width, height, stride, quality)
+                    : NativeWebP.encodeRGB(imageBytes, width, height, stride, quality);
         }
     }
 
@@ -202,8 +192,8 @@ public final class WebPCodec {
      *                     - For RGB format: Each pixel is represented by 3 consecutive bytes (R, G, B).
      *                     - For ARGB format: Each pixel is represented by 4 consecutive bytes (R, G, B, A).
      * @return A BufferedImage object representing the image with the specified width, height, and pixel data.
-     *         - If the input buffer is RGB, the image will be of type BufferedImage.TYPE_INT_RGB.
-     *         - If the input buffer is ARGB, the image will be of type BufferedImage.TYPE_INT_ARGB.
+     * - If the input buffer is RGB, the image will be of type BufferedImage.TYPE_INT_RGB.
+     * - If the input buffer is ARGB, the image will be of type BufferedImage.TYPE_INT_ARGB.
      * @throws IllegalArgumentException if the length of the outputBuffer does not match the expected size
      *                                  for the given width, height, and pixel format.
      */
@@ -231,9 +221,6 @@ public final class WebPCodec {
                 pixels[pixelIndex++] = (a << 24) | (r << 16) | (g << 8) | b;
             }
         }
-
-        // Set unused references to null to help GC
-        outputBuffer = null;
 
         return image;
     }
@@ -263,27 +250,23 @@ public final class WebPCodec {
             // Handle different types of BufferedImage
             switch (imageType) {
                 // INT-based types with direct buffer access
-                case BufferedImage.TYPE_INT_RGB:
-                case BufferedImage.TYPE_INT_ARGB:
-                case BufferedImage.TYPE_INT_ARGB_PRE: {
+                case BufferedImage.TYPE_INT_RGB, BufferedImage.TYPE_INT_ARGB, BufferedImage.TYPE_INT_ARGB_PRE -> {
                     // Get direct reference without creating a copy
                     DataBuffer dataBuffer = image.getRaster().getDataBuffer();
-                    if (dataBuffer instanceof DataBufferInt) {
-                        int[] intPixels = ((DataBufferInt) dataBuffer).getData();
+                    if (dataBuffer instanceof DataBufferInt dataBufferInt) {
+                        int[] intPixels = dataBufferInt.getData();
+                        int index = 0;
+
                         // Use direct array access for maximum speed
                         if (hasAlpha) {
-                            int index = 0;
-                            for (int i = 0; i < intPixels.length; i++) {
-                                int pixel = intPixels[i];
+                            for (int pixel : intPixels) {
                                 output[index++] = (byte) ((pixel >> 16) & 0xFF); // Red
                                 output[index++] = (byte) ((pixel >> 8) & 0xFF);  // Green
                                 output[index++] = (byte) (pixel & 0xFF);         // Blue
                                 output[index++] = (byte) ((pixel >> 24) & 0xFF); // Alpha
                             }
                         } else {
-                            int index = 0;
-                            for (int i = 0; i < intPixels.length; i++) {
-                                int pixel = intPixels[i];
+                            for (int pixel : intPixels) {
                                 output[index++] = (byte) ((pixel >> 16) & 0xFF); // Red
                                 output[index++] = (byte) ((pixel >> 8) & 0xFF);  // Green
                                 output[index++] = (byte) (pixel & 0xFF);         // Blue
@@ -292,17 +275,15 @@ public final class WebPCodec {
                     } else {
                         processImageByRows(image, output, width, height, hasAlpha);
                     }
-                    break;
                 }
 
                 // INT-based BGR type with direct buffer access
-                case BufferedImage.TYPE_INT_BGR: {
+                case BufferedImage.TYPE_INT_BGR -> {
                     DataBuffer dataBuffer = image.getRaster().getDataBuffer();
-                    if (dataBuffer instanceof DataBufferInt) {
-                        int[] bgrIntPixels = ((DataBufferInt) dataBuffer).getData();
+                    if (dataBuffer instanceof DataBufferInt dataBufferInt) {
+                        int[] bgrIntPixels = dataBufferInt.getData();
                         int index = 0;
-                        for (int i = 0; i < bgrIntPixels.length; i++) {
-                            int pixel = bgrIntPixels[i];
+                        for (int pixel : bgrIntPixels) {
                             output[index++] = (byte) ((pixel) & 0xFF);       // Red (BGR order)
                             output[index++] = (byte) ((pixel >> 8) & 0xFF);  // Green
                             output[index++] = (byte) ((pixel >> 16) & 0xFF); // Blue (BGR order)
@@ -313,14 +294,13 @@ public final class WebPCodec {
                     } else {
                         processImageByRows(image, output, width, height, hasAlpha);
                     }
-                    break;
                 }
 
                 // BYTE-based types with direct buffer access
-                case BufferedImage.TYPE_3BYTE_BGR: {
+                case BufferedImage.TYPE_3BYTE_BGR -> {
                     DataBuffer dataBuffer = image.getRaster().getDataBuffer();
-                    if (dataBuffer instanceof DataBufferByte) {
-                        byte[] bgrBytes = ((DataBufferByte) dataBuffer).getData();
+                    if (dataBuffer instanceof DataBufferByte dataBufferByte) {
+                        byte[] bgrBytes = dataBufferByte.getData();
                         int index = 0;
                         // Unroll the loop for better performance
                         int maxIndex = bgrBytes.length - 2;  // Safe limit for unrolled loop
@@ -353,16 +333,14 @@ public final class WebPCodec {
                     } else {
                         processImageByRows(image, output, width, height, hasAlpha);
                     }
-                    break;
                 }
 
-                case BufferedImage.TYPE_4BYTE_ABGR:
-                case BufferedImage.TYPE_4BYTE_ABGR_PRE: {
+                case BufferedImage.TYPE_4BYTE_ABGR, BufferedImage.TYPE_4BYTE_ABGR_PRE -> {
                     DataBuffer dataBuffer = image.getRaster().getDataBuffer();
-                    if (dataBuffer instanceof DataBufferByte) {
-                        byte[] abgrBytes = ((DataBufferByte) dataBuffer).getData();
+                    if (dataBuffer instanceof DataBufferByte dataBufferByte) {
+                        byte[] abgrBytes = dataBufferByte.getData();
+                        int index = 0;
                         if (hasAlpha) {
-                            int index = 0;
                             // Similar loop unrolling for 4-byte pixels
                             int maxIndex = abgrBytes.length - 7;
                             int i = 0;
@@ -391,7 +369,6 @@ public final class WebPCodec {
                             }
                         } else {
                             // When hasAlpha is false but image has 4 bytes per pixel
-                            int index = 0;
                             for (int i = 0; i < abgrBytes.length; i += 4) {
                                 output[index++] = abgrBytes[i + 3];  // Red
                                 output[index++] = abgrBytes[i + 2];  // Green
@@ -401,13 +378,10 @@ public final class WebPCodec {
                     } else {
                         processImageByRows(image, output, width, height, hasAlpha);
                     }
-                    break;
                 }
 
                 // Default case for all other types
-                default:
-                    processImageByRows(image, output, width, height, hasAlpha);
-                    break;
+                default -> processImageByRows(image, output, width, height, hasAlpha);
             }
         } catch (Exception e) {
             // Fallback if any error occurs during optimized processing
@@ -421,10 +395,9 @@ public final class WebPCodec {
         // More efficient row-by-row processing
         int[] rowBuffer = new int[width];
         int index = 0;
-        int bytesPerPixel = hasAlpha ? 4 : 3;
 
         for (int y = 0; y < height; y++) {
-            // Get entire row at once
+            // Get the entire row at once
             image.getRGB(0, y, width, 1, rowBuffer, 0, width);
 
             if (hasAlpha) {
