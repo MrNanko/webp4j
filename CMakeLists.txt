@@ -44,7 +44,7 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
       # QEMU has known issues when compiling architecture-specific SIMD instructions:
       # - SSE/AVX (x86_64)
       # - NEON (ARM)
-      # - MSA (MIPS)
+      # - MSA/MIPS32/MIPS DSP R2 (MIPS)
       # Set WEBP4J_QEMU_BUILD=1 when building under QEMU to avoid compilation segfaults
       if(DEFINED ENV{WEBP4J_QEMU_BUILD} AND "$ENV{WEBP4J_QEMU_BUILD}" STREQUAL "1")
           message(STATUS "SIMD optimizations: DISABLED (building under QEMU, avoiding SIMD compilation issues)")
@@ -60,6 +60,12 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
           # Disable MSA (MIPS SIMD Architecture) - affects MIPS platforms
           set(WEBP_BUILD_MSA OFF CACHE BOOL "" FORCE)
           set(WEBP_HAVE_MSA OFF CACHE BOOL "" FORCE)
+
+          # Disable MIPS32 and MIPS DSP R2 optimizations - affects MIPS platforms
+          set(WEBP_BUILD_MIPS32 OFF CACHE BOOL "" FORCE)
+          set(WEBP_BUILD_MIPS_DSP_R2 OFF CACHE BOOL "" FORCE)
+          set(WEBP_HAVE_MIPS32 OFF CACHE BOOL "" FORCE)
+          set(WEBP_HAVE_MIPS_DSP_R2 OFF CACHE BOOL "" FORCE)
 
           # Disable SSE/AVX (x86_64 SIMD) - affects Intel/AMD platforms
           set(WEBP_BUILD_SSE2 OFF CACHE BOOL "" FORCE)
