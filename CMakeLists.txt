@@ -240,6 +240,9 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
   # Install to Maven resources directory
   set(INSTALL_DIR "${CMAKE_SOURCE_DIR}/src/main/resources/native")
 
+  # Create installation directory if it doesn't exist
+  file(MAKE_DIRECTORY ${INSTALL_DIR})
+
   install(TARGETS webp4j
       LIBRARY DESTINATION ${INSTALL_DIR}
       RUNTIME DESTINATION ${INSTALL_DIR}

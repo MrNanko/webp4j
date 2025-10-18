@@ -33,3 +33,9 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### Native Libraries ###
+# Ignore compiled native libraries (they will be built by CI/CD)
+src/main/resources/native/*.dll
+src/main/resources/native/*.so
+src/main/resources/native/*.dylib
