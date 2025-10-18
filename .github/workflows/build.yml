@@ -1,0 +1,279 @@
+name: Build Native Libraries
+
+on:
+  push:
+    branches: [ main, master, develop ]
+    paths:
+      - 'src/main/c/**'
+      - 'CMakeLists.txt'
+      - 'libwebp/**'
+      - '.github/workflows/build-native.yml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'src/main/c/**'
+      - 'CMakeLists.txt'
+      - 'libwebp/**'
+  workflow_dispatch:  # Allow manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  # ============================================
+  # Windows Build (using MinGW)
+  # ============================================
+  build-windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [x64]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Setup MinGW
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-cmake
+          mingw-w64-x86_64-make
+
+    - name: Build
+      shell: msys2 {0}
+      run: |
+        mkdir build && cd build
+        cmake -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release ..
+        mingw32-make -j$(nproc)
+        mingw32-make install
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: webp4j-windows-${{ matrix.arch }}
+        path: src/main/resources/native/webp4j-windows-${{ matrix.arch }}.dll
+        retention-days: 7
+
+  # ============================================
+  # macOS Build
+  # ============================================
+  build-macos:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-13      # Intel Mac (x64)
+            arch: x64
+          - os: macos-14      # Apple Silicon (arm64)
+            arch: arm64
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Install CMake
+      run: brew install cmake
+
+    - name: Build
+      run: |
+        mkdir build && cd build
+        cmake -DCMAKE_BUILD_TYPE=Release ..
+        make -j$(sysctl -n hw.ncpu)
+        make install
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: webp4j-mac-${{ matrix.arch }}
+        path: src/main/resources/native/libwebp4j-mac-${{ matrix.arch }}.dylib
+        retention-days: 7
+
+  # ============================================
+  # Linux Build (x86_64)
+  # ============================================
+  build-linux-x64:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake
+
+    - name: Build
+      run: |
+        mkdir build && cd build
+        cmake -DCMAKE_BUILD_TYPE=Release ..
+        make -j$(nproc)
+        make install
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: webp4j-linux-x64
+        path: src/main/resources/native/libwebp4j-linux-x64.so
+        retention-days: 7
+
+  # ============================================
+  # Linux ARM64 Native Build (using QEMU)
+  # ============================================
+  build-linux-arm64:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build with Docker (ARM64)
+      run: |
+        docker buildx build --platform linux/arm64 --load -f docker/Dockerfile.linux-arm64 -t webp4j-builder-arm64 .
+        docker run --platform linux/arm64 --rm -v $(pwd):/workspace webp4j-builder-arm64
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: webp4j-linux-aarch64
+        path: src/main/resources/native/libwebp4j-linux-aarch64.so
+        retention-days: 7
+
+  # ============================================
+  # Linux ARM32 Native Build (using QEMU)
+  # ============================================
+  build-linux-arm32:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build with Docker (ARM32)
+      run: |
+        docker buildx build --platform linux/arm/v7 --load -f docker/Dockerfile.linux-arm32 -t webp4j-builder-arm32 .
+        docker run --platform linux/arm/v7 --rm -v $(pwd):/workspace webp4j-builder-arm32
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: webp4j-linux-arm
+        path: src/main/resources/native/libwebp4j-linux-arm.so
+        retention-days: 7
+
+  # ============================================
+  # Collect libraries from all platforms
+  # ============================================
+  collect-artifacts:
+    needs: [build-windows, build-macos, build-linux-x64, build-linux-arm64, build-linux-arm32]
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: native-libraries
+
+    - name: Display structure of downloaded files
+      run: ls -R native-libraries
+
+    - name: Organize files
+      run: |
+        mkdir -p collected
+        find native-libraries -type f \( -name "*.dll" -o -name "*.so" -o -name "*.dylib" \) -exec cp {} collected/ \;
+        ls -lh collected/
+
+    - name: Upload collected libraries
+      uses: actions/upload-artifact@v4
+      with:
+        name: webp4j-all-platforms
+        path: collected/
+        retention-days: 30
+
+    - name: Create checksum
+      run: |
+        cd collected
+        sha256sum * > SHA256SUMS
+        cat SHA256SUMS
+
+    - name: Upload checksum
+      uses: actions/upload-artifact@v4
+      with:
+        name: webp4j-checksums
+        path: collected/SHA256SUMS
+        retention-days: 30
+
+  # ============================================
+  # Create Release (only when tag is pushed)
+  # ============================================
+  create-release:
+    needs: collect-artifacts
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+    - name: Download collected artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: webp4j-all-platforms
+        path: release-files
+
+    - name: Download checksums
+      uses: actions/download-artifact@v4
+      with:
+        name: webp4j-checksums
+        path: release-files
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: release-files/*
+        generate_release_notes: true
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
