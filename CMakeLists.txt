@@ -25,11 +25,9 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
   find_package(JNI REQUIRED)
   include_directories(${JNI_INCLUDE_DIRS})
 
-  # Find or add libwebp
-  find_package(WebP)
-  if(NOT WebP_FOUND)
-      # If system doesn't have libwebp, use bundled version from subdirectory
-      message(STATUS "libwebp not found, using bundled version from libwebp/")
+  # Always use bundled libwebp to ensure consistent behavior across platforms
+  # This ensures libwebp is statically linked into our library
+  message(STATUS "Using bundled libwebp from libwebp/ subdirectory")
 
       # Disable libwebp example tools build, only build libraries
       set(WEBP_BUILD_ANIM_UTILS OFF CACHE BOOL "" FORCE)
@@ -79,7 +77,6 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
       # Add libwebp subdirectory (exclude from "make install" to prevent system-wide installation)
       # We only need to build libwebp statically and link it into our webp4j library
       add_subdirectory(libwebp EXCLUDE_FROM_ALL)
-  endif()
 
   # Add header file search paths
   include_directories(
