@@ -62,8 +62,9 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
           endif()
       endif()
 
-      # Add libwebp subdirectory
-      add_subdirectory(libwebp)
+      # Add libwebp subdirectory (exclude from "make install" to prevent system-wide installation)
+      # We only need to build libwebp statically and link it into our webp4j library
+      add_subdirectory(libwebp EXCLUDE_FROM_ALL)
   endif()
 
   # Add header file search paths
