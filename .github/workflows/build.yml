@@ -179,6 +179,7 @@ jobs:
         run: |
           export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
           export PATH="${JAVA_HOME}/bin:${PATH}"
+          export WEBP4J_QEMU_BUILD=1
           git config --global --add safe.directory /home/runner/work/webp4j/webp4j
           git config --global --add safe.directory /home/runner/work/webp4j/webp4j/libwebp
           git submodule update --init --recursive
@@ -225,6 +226,7 @@ jobs:
         run: |
           export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-armhf
           export PATH="${JAVA_HOME}/bin:${PATH}"
+          export WEBP4J_QEMU_BUILD=1
           git config --global --add safe.directory /home/runner/work/webp4j/webp4j
           git config --global --add safe.directory /home/runner/work/webp4j/webp4j/libwebp
           git submodule update --init --recursive

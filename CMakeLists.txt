@@ -42,6 +42,20 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
       set(WEBP_BUILD_WEBPMUX OFF CACHE BOOL "" FORCE)
       set(WEBP_BUILD_EXTRAS OFF CACHE BOOL "" FORCE)
 
+      # Conditionally disable CPU-specific SIMD optimizations for QEMU build environments
+      # QEMU has known issues when compiling architecture-specific SIMD instructions:
+      # - SSE/AVX (x86_64)
+      # - NEON (ARM)
+      # - MSA (MIPS)
+      # Set WEBP4J_QEMU_BUILD=1 when building under QEMU to avoid compilation segfaults
+      if(DEFINED ENV{WEBP4J_QEMU_BUILD} AND "$ENV{WEBP4J_QEMU_BUILD}" STREQUAL "1")
+          message(STATUS "SIMD optimizations: DISABLED (building under QEMU, avoiding SIMD compilation issues)")
+          set(WEBP_ENABLE_SIMD OFF CACHE BOOL "" FORCE)
+          set(WEBP_BUILD_NEON OFF CACHE BOOL "" FORCE)
+      else()
+          message(STATUS "SIMD optimizations: ENABLED (default)")
+      endif()
+
       # Force static library compilation (Important: ensure .a/.lib files are generated instead of .so/.dylib/.dll)
       set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
