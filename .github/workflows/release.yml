@@ -17,12 +17,14 @@ jobs:
   # Build native libraries (reusable workflow)
   # ============================================
   build-natives:
+    name: Build Native Libraries
     uses: ./.github/workflows/build-natives.yml
 
   # ============================================
   # Collect libraries from all platforms
   # ============================================
   collect-artifacts:
+    name: Collect Artifacts
     needs: build-natives
     runs-on: ubuntu-latest
 
@@ -119,6 +121,7 @@ jobs:
   # Create GitHub Release (only when tag is pushed)
   # ============================================
   create-release:
+    name: Create GitHub Release
     needs: publish-maven
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
