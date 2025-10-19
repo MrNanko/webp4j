@@ -11,8 +11,14 @@ env:
   JAVA_VERSION: '17'
 
 jobs:
+  # ============================================
+  # Windows Build
+  # ============================================
   build-windows:
     runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [x64]
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -46,10 +52,13 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: webp4j-windows-x64
-        path: src/main/resources/native/webp4j-windows-x64.dll
+        name: webp4j-windows-${{ matrix.arch }}
+        path: src/main/resources/native/webp4j-windows-${{ matrix.arch }}.dll
         retention-days: 7
 
+  # ============================================
+  # macOS Build (matrix for x64 and arm64)
+  # ============================================
   build-macos:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -88,6 +97,9 @@ jobs:
         path: src/main/resources/native/libwebp4j-mac-${{ matrix.arch }}.dylib
         retention-days: 7
 
+  # ============================================
+  # Linux Build (x64 native)
+  # ============================================
   build-linux-x64:
     runs-on: ubuntu-22.04
     steps:
@@ -121,6 +133,9 @@ jobs:
         path: src/main/resources/native/libwebp4j-linux-x64.so
         retention-days: 7
 
+  # ============================================
+  # Linux ARM64 Build (QEMU emulation)
+  # ============================================
   build-linux-arm64:
     runs-on: ubuntu-22.04
     steps:
@@ -162,6 +177,9 @@ jobs:
         path: src/main/resources/native/libwebp4j-linux-aarch64.so
         retention-days: 7
 
+  # ============================================
+  # Linux ARM32 Build (QEMU emulation)
+  # ============================================
   build-linux-arm32:
     runs-on: ubuntu-22.04
     steps:
