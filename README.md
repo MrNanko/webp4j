@@ -21,16 +21,11 @@ My current development and compilation environment is based on JDK 17. If you’
 
 ## Supported platforms
 
-WebP4j currently supports the following platforms:
+WebP4j supports the following platforms through automated CI/CD builds:
 
-- Windows(x86-64)
-- Linux(x86-64)
-- Linux(arm64)
-- MacOS(arm64)
-
-### macOS (x86-64) Support:
-
-> Unfortunately, I do not have access to a macOS (x86-64) device, so I am unable to compile the native library for this platform. If you have access to a macOS (x86-64) device, I would greatly appreciate it if you could compile the native library for me and share it with the project. Thank you in advance for your contribution!
+- **Windows**: x64 (x86-64)
+- **macOS**: x64 (Intel) and arm64 (Apple Silicon)
+- **Linux**: x64 (x86-64), ARM64 (aarch64), and ARM32 (armv7)
 
 ## API
 
@@ -42,7 +37,7 @@ To use WebP4j in your project, add the following dependency to your `pom.xml` fi
 <dependency>
     <groupId>dev.matrixlab</groupId>
     <artifactId>webp4j</artifactId>
-    <version>1.2.0</version>
+    <version>1.3.0</version>
 </dependency>
 ```
 
