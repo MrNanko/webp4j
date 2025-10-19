@@ -1,0 +1,204 @@
+name: Build Native Libraries (Reusable)
+
+on:
+  workflow_call:
+    outputs:
+      artifact-name:
+        description: "Name of the artifact containing all native libraries"
+        value: webp4j-natives-${{ github.sha }}
+
+env:
+  JAVA_VERSION: '17'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: ${{ env.JAVA_VERSION }}
+
+    - name: Setup MinGW
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-cmake
+          mingw-w64-x86_64-make
+
+    - name: Build
+      shell: msys2 {0}
+      run: |
+        mkdir build && cd build
+        cmake -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release ..
+        mingw32-make -j$(nproc)
+        mingw32-make install
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: webp4j-windows-x64
+        path: src/main/resources/native/webp4j-windows-x64.dll
+        retention-days: 7
+
+  build-macos:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-13
+            arch: x64
+          - os: macos-14
+            arch: arm64
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: ${{ env.JAVA_VERSION }}
+
+    - name: Install CMake
+      run: brew install cmake
+
+    - name: Build
+      run: |
+        mkdir build && cd build
+        cmake -DCMAKE_BUILD_TYPE=Release ..
+        make -j$(sysctl -n hw.ncpu)
+        make install
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: webp4j-mac-${{ matrix.arch }}
+        path: src/main/resources/native/libwebp4j-mac-${{ matrix.arch }}.dylib
+        retention-days: 7
+
+  build-linux-x64:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: ${{ env.JAVA_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake
+
+    - name: Build
+      run: |
+        mkdir build && cd build
+        cmake -DCMAKE_BUILD_TYPE=Release ..
+        make -j$(nproc)
+        make install
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: webp4j-linux-x64
+        path: src/main/resources/native/libwebp4j-linux-x64.so
+        retention-days: 7
+
+  build-linux-arm64:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup QEMU
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: arm64
+
+    - name: Build on ARM64
+      uses: uraimo/run-on-arch-action@v2
+      with:
+        arch: aarch64
+        distro: ubuntu22.04
+        githubToken: ${{ github.token }}
+        install: |
+          apt-get update -q -y
+          apt-get install -q -y build-essential cmake openjdk-17-jdk git
+        run: |
+          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
+          export PATH="${JAVA_HOME}/bin:${PATH}"
+          export WEBP4J_QEMU_BUILD=1
+          git config --global --add safe.directory /home/runner/work/webp4j/webp4j
+          git config --global --add safe.directory /home/runner/work/webp4j/webp4j/libwebp
+          git submodule update --init --recursive
+          mkdir build && cd build
+          cmake -DCMAKE_BUILD_TYPE=Release ..
+          make -j$(nproc)
+          make install
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: webp4j-linux-aarch64
+        path: src/main/resources/native/libwebp4j-linux-aarch64.so
+        retention-days: 7
+
+  build-linux-arm32:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup QEMU
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: arm
+
+    - name: Build on ARM32
+      uses: uraimo/run-on-arch-action@v2
+      with:
+        arch: armv7
+        distro: ubuntu22.04
+        githubToken: ${{ github.token }}
+        install: |
+          apt-get update -q -y
+          apt-get install -q -y build-essential cmake openjdk-17-jdk git
+        run: |
+          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-armhf
+          export PATH="${JAVA_HOME}/bin:${PATH}"
+          export WEBP4J_QEMU_BUILD=1
+          git config --global --add safe.directory /home/runner/work/webp4j/webp4j
+          git config --global --add safe.directory /home/runner/work/webp4j/webp4j/libwebp
+          git submodule update --init --recursive
+          mkdir build && cd build
+          cmake -DCMAKE_BUILD_TYPE=Release ..
+          make -j$(nproc)
+          make install
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: webp4j-linux-arm
+        path: src/main/resources/native/libwebp4j-linux-arm.so
+        retention-days: 7
