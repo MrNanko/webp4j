@@ -167,7 +167,7 @@ jobs:
           git submodule update --init --recursive
           mkdir build && cd build
           cmake -DCMAKE_BUILD_TYPE=Release ..
-          make -j$(nproc)
+          make -j2
           make install
 
     - name: Upload artifact
