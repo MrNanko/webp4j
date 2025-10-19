@@ -119,22 +119,53 @@ jobs:
   # Create GitHub Release (only when tag is pushed)
   # ============================================
   create-release:
-    needs: collect-artifacts
+    needs: publish-maven
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
-    - name: Download collected artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: webp4j-all-platforms
-        path: release-files
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-    - name: Download checksums
+    - name: Extract version without 'v' prefix
+      id: version
+      run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: ${{ env.JAVA_VERSION }}
+        cache: 'maven'
+
+    - name: Download all native artifacts
       uses: actions/download-artifact@v4
       with:
-        name: webp4j-checksums
-        path: release-files
+        pattern: webp4j-*
+        merge-multiple: true
+        path: downloads
+
+    - name: Prepare native resources directory
+      run: |
+        mkdir -p src/main/resources/native
+        shopt -s nullglob
+        mv downloads/*.so src/main/resources/native/ 2>/dev/null || true
+        mv downloads/*.dylib src/main/resources/native/ 2>/dev/null || true
+        mv downloads/*.dll src/main/resources/native/ 2>/dev/null || true
+        echo "Native files:" && ls -lh src/main/resources/native || true
+
+    - name: Build JAR with all native libraries
+      run: |
+        mvn -B clean package -DskipTests
+        echo "JAR contents:" && jar tf target/webp4j-*.jar | grep native/ || true
+
+    - name: Prepare release files
+      run: |
+        mkdir -p release-files
+        cp target/webp4j-*.jar release-files/ 2>/dev/null || true
+        cd release-files
+        sha256sum *.jar > SHA256SUMS 2>/dev/null || true
+        cat SHA256SUMS
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
@@ -143,5 +174,35 @@ jobs:
         generate_release_notes: true
         draft: false
         prerelease: false
+        body: |
+          ## WebP4j Release
+
+          ### Installation
+
+          **Maven:**
+          ```xml
+          <dependency>
+            <groupId>dev.matrixlab</groupId>
+            <artifactId>webp4j</artifactId>
+            <version>${{ steps.version.outputs.VERSION }}</version>
+          </dependency>
+          ```
+
+          **Gradle:**
+          ```gradle
+          implementation 'dev.matrixlab:webp4j:${{ steps.version.outputs.VERSION }}'
+          ```
+
+          ### Files Included
+          - `webp4j-${{ steps.version.outputs.VERSION }}.jar` - Main JAR with all native libraries bundled
+          - `SHA256SUMS` - Checksum file for verification
+
+          ### Supported Platforms
+          - Windows x64
+          - macOS x64 (Intel)
+          - macOS arm64 (Apple Silicon)
+          - Linux x64
+          - Linux aarch64 (ARM64)
+          - Linux arm (ARM32)
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
