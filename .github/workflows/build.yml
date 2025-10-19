@@ -325,13 +325,18 @@ jobs:
         mv downloads/*.dll src/main/resources/native/ 2>/dev/null || true
         echo "Native files:" && ls -lh src/main/resources/native || true
 
-    - name: Build and publish to Maven Central
+    - name: Build and package JAR
+      run: |
+        mvn -B clean package -DskipTests
+        echo "JAR contents:" && jar tf target/webp4j-*.jar | grep native/ || true
+
+    - name: Publish to Maven Central
       env:
         OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
         OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
         GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
       run: |
-        mvn -B -DskipTests deploy
+        mvn -B deploy -DskipTests
 
   # ============================================
   # Create GitHub Release (only when tag is pushed)
