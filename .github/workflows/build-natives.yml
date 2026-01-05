@@ -6,6 +6,7 @@ on:
       artifact-name:
         description: "Name of the artifact containing all native libraries"
         value: webp4j-natives-${{ github.sha }}
+  workflow_dispatch:
 
 env:
   JAVA_VERSION: '21'
