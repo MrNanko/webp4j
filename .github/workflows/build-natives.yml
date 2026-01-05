@@ -166,6 +166,7 @@ jobs:
           git config --global --add safe.directory /home/runner/work/webp4j/webp4j
           git config --global --add safe.directory /home/runner/work/webp4j/webp4j/libwebp
           git submodule update --init --recursive
+          rm -rf build
           mkdir build && cd build
           cmake -DCMAKE_BUILD_TYPE=Release ..
           make -j1
@@ -210,6 +211,7 @@ jobs:
           git config --global --add safe.directory /home/runner/work/webp4j/webp4j
           git config --global --add safe.directory /home/runner/work/webp4j/webp4j/libwebp
           git submodule update --init --recursive
+          rm -rf build
           mkdir build && cd build
           cmake -DCMAKE_BUILD_TYPE=Release ..
           make -j$(nproc)
