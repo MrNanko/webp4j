@@ -8,7 +8,7 @@ on:
         value: webp4j-natives-${{ github.sha }}
 
 env:
-  JAVA_VERSION: '17'
+  JAVA_VERSION: '21'
 
 jobs:
   # ============================================
@@ -157,9 +157,9 @@ jobs:
         githubToken: ${{ github.token }}
         install: |
           apt-get update -q -y
-          apt-get install -q -y build-essential cmake openjdk-17-jdk git
+          apt-get install -q -y build-essential cmake openjdk-21-jdk git
         run: |
-          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
+          export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-arm64
           export PATH="${JAVA_HOME}/bin:${PATH}"
           export WEBP4J_QEMU_BUILD=1
           git config --global --add safe.directory /home/runner/work/webp4j/webp4j
@@ -201,9 +201,9 @@ jobs:
         githubToken: ${{ github.token }}
         install: |
           apt-get update -q -y
-          apt-get install -q -y build-essential cmake openjdk-17-jdk git
+          apt-get install -q -y build-essential cmake openjdk-21-jdk git
         run: |
-          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-armhf
+          export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-armhf
           export PATH="${JAVA_HOME}/bin:${PATH}"
           export WEBP4J_QEMU_BUILD=1
           git config --global --add safe.directory /home/runner/work/webp4j/webp4j
