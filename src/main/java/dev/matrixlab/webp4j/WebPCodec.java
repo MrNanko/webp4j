@@ -250,10 +250,13 @@ public final class WebPCodec {
             // Handle different types of BufferedImage
             switch (imageType) {
                 // INT-based types with direct buffer access
-                case BufferedImage.TYPE_INT_RGB, BufferedImage.TYPE_INT_ARGB, BufferedImage.TYPE_INT_ARGB_PRE -> {
+                case BufferedImage.TYPE_INT_RGB:
+                case BufferedImage.TYPE_INT_ARGB:
+                case BufferedImage.TYPE_INT_ARGB_PRE: {
                     // Get direct reference without creating a copy
                     DataBuffer dataBuffer = image.getRaster().getDataBuffer();
-                    if (dataBuffer instanceof DataBufferInt dataBufferInt) {
+                    if (dataBuffer instanceof DataBufferInt) {
+                        DataBufferInt dataBufferInt = (DataBufferInt) dataBuffer;
                         int[] intPixels = dataBufferInt.getData();
                         int index = 0;
 
@@ -275,12 +278,14 @@ public final class WebPCodec {
                     } else {
                         processImageByRows(image, output, width, height, hasAlpha);
                     }
+                    break;
                 }
 
                 // INT-based BGR type with direct buffer access
-                case BufferedImage.TYPE_INT_BGR -> {
+                case BufferedImage.TYPE_INT_BGR: {
                     DataBuffer dataBuffer = image.getRaster().getDataBuffer();
-                    if (dataBuffer instanceof DataBufferInt dataBufferInt) {
+                    if (dataBuffer instanceof DataBufferInt) {
+                        DataBufferInt dataBufferInt = (DataBufferInt) dataBuffer;
                         int[] bgrIntPixels = dataBufferInt.getData();
                         int index = 0;
                         for (int pixel : bgrIntPixels) {
@@ -294,12 +299,14 @@ public final class WebPCodec {
                     } else {
                         processImageByRows(image, output, width, height, hasAlpha);
                     }
+                    break;
                 }
 
                 // BYTE-based types with direct buffer access
-                case BufferedImage.TYPE_3BYTE_BGR -> {
+                case BufferedImage.TYPE_3BYTE_BGR: {
                     DataBuffer dataBuffer = image.getRaster().getDataBuffer();
-                    if (dataBuffer instanceof DataBufferByte dataBufferByte) {
+                    if (dataBuffer instanceof DataBufferByte) {
+                        DataBufferByte dataBufferByte = (DataBufferByte) dataBuffer;
                         byte[] bgrBytes = dataBufferByte.getData();
                         int index = 0;
                         // Unroll the loop for better performance
@@ -333,11 +340,14 @@ public final class WebPCodec {
                     } else {
                         processImageByRows(image, output, width, height, hasAlpha);
                     }
+                    break;
                 }
 
-                case BufferedImage.TYPE_4BYTE_ABGR, BufferedImage.TYPE_4BYTE_ABGR_PRE -> {
+                case BufferedImage.TYPE_4BYTE_ABGR:
+                case BufferedImage.TYPE_4BYTE_ABGR_PRE: {
                     DataBuffer dataBuffer = image.getRaster().getDataBuffer();
-                    if (dataBuffer instanceof DataBufferByte dataBufferByte) {
+                    if (dataBuffer instanceof DataBufferByte) {
+                        DataBufferByte dataBufferByte = (DataBufferByte) dataBuffer;
                         byte[] abgrBytes = dataBufferByte.getData();
                         int index = 0;
                         if (hasAlpha) {
@@ -378,10 +388,13 @@ public final class WebPCodec {
                     } else {
                         processImageByRows(image, output, width, height, hasAlpha);
                     }
+                    break;
                 }
 
                 // Default case for all other types
-                default -> processImageByRows(image, output, width, height, hasAlpha);
+                default:
+                    processImageByRows(image, output, width, height, hasAlpha);
+                    break;
             }
         } catch (Exception e) {
             // Fallback if any error occurs during optimized processing
