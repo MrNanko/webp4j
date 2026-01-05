@@ -8,16 +8,24 @@
 - Supports decoding WebP images to RGB and RGBA formats.
 - Provides efficient image compression and decompression using libwebp.
 - Compatible with multiple platforms (supports x86 and ARM).
-- Developed and tested with **JDK 17**.
+- Compiled with **JDK 21** but targets **Java 8 bytecode** for maximum compatibility.
 - Published WebP4j to Maven Central Repository.
 
 ## Prerequisites
 
-This library is developed and tested with Java 17+. While Java 8 should be supported, it has not been thoroughly tested. For best compatibility, we recommend using Java 17 or later.
+### For Library Users
 
-### Important Note:
+- **Java 8 or higher** - The compiled library is compatible with Java 8, 11, 17, 21, and later versions.
 
-My current development and compilation environment is based on JDK 17. If you’re using a version of JDK below 17, please perform your own testing to ensure compatibility. If you encounter any issues, feel free to provide feedback, and I will do my best to assist.
+### For Developers (Building from Source)
+
+If you want to build the native libraries locally, you'll need:
+
+- **Java 21** - Required for building (JNI header generation and modern tooling)
+- **CMake 3.15+** - For building native libraries
+- **C Compiler** - GCC (Linux/macOS), MinGW (Windows), or Clang
+
+**Note:** The library is compiled with Java 21 using `--release 8` flag, which generates Java 8-compatible bytecode while leveraging modern build tools. This ensures the library works on any Java 8+ runtime while maintaining compatibility.
 
 ## Supported platforms
 
@@ -37,7 +45,7 @@ To use WebP4j in your project, add the following dependency to your `pom.xml` fi
 <dependency>
     <groupId>dev.matrixlab</groupId>
     <artifactId>webp4j</artifactId>
-    <version>1.3.0</version>
+    <version>1.3.1</version>
 </dependency>
 ```
 
