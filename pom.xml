@@ -4,7 +4,7 @@
 
   <groupId>dev.matrixlab</groupId>
   <artifactId>webp4j</artifactId>
-  <version>1.3.0</version>
+  <version>1.3.1</version>
   <packaging>jar</packaging>
 
   <name>webp4j</name>
@@ -35,8 +35,7 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <maven.compiler.source>21</maven.compiler.source>
-    <maven.compiler.target>21</maven.compiler.target>
+    <maven.compiler.release>8</maven.compiler.release>
   </properties>
 
   <dependencies>
