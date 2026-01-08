@@ -103,39 +103,55 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
   # giflib Detection and Configuration
   # ============================================
   #
-  # Strategy: 3-tier fallback system for maximum compatibility
+  # Strategy: Prioritize static linking to eliminate runtime dependencies
   #
-  # Tier 1: System-installed giflib (fastest, preferred)
-  #   - Uses system package manager version (apt/brew/yum/pacman)
-  #   - User should install via: brew install giflib (macOS) or apt install libgif-dev (Linux)
+  # Option: WEBP4J_USE_SYSTEM_GIFLIB (default: OFF)
+  #   - OFF (default): Build giflib statically, no runtime dependencies
+  #   - ON: Use system-installed giflib (requires libgif at runtime)
   #
-  # Tier 2: Bundled source in project (offline-friendly)
-  #   - For users who manually download giflib source to giflib/ directory
+  # Build modes:
+  #   1. Static build (WEBP4J_USE_SYSTEM_GIFLIB=OFF):
+  #      - Tier 1: Use bundled source in giflib/ directory (if exists)
+  #      - Tier 2: Auto-download from SourceForge and build statically
+  #      - Result: giflib is compiled into webp4j, no external dependencies
   #
-  # Tier 3: Auto-download from official source (fully automatic)
-  #   - Downloads latest giflib from SourceForge official repository
+  #   2. System build (WEBP4J_USE_SYSTEM_GIFLIB=ON):
+  #      - Uses system giflib via find_library()
+  #      - Requires: brew install giflib (macOS) or apt install libgif-dev (Linux)
+  #      - Result: Dynamic linking, requires libgif at runtime
   #
   # ============================================
 
-  # Tier 1: Try to find system-installed giflib
-  find_library(GIFLIB_LIBRARY NAMES gif libgif)
-  find_path(GIFLIB_INCLUDE_DIR gif_lib.h)
+  # Configuration option (default: OFF for maximum portability)
+  option(WEBP4J_USE_SYSTEM_GIFLIB "Use system-installed giflib instead of static build" OFF)
 
-  if(GIFLIB_LIBRARY AND GIFLIB_INCLUDE_DIR)
-      message(STATUS "✓ Using system giflib: ${GIFLIB_LIBRARY}")
-      set(GIFLIB_FOUND TRUE)
+  if(WEBP4J_USE_SYSTEM_GIFLIB)
+      # User explicitly requested system giflib
+      message(STATUS "Searching for system-installed giflib...")
+      find_library(GIFLIB_LIBRARY NAMES gif libgif)
+      find_path(GIFLIB_INCLUDE_DIR gif_lib.h)
+
+      if(GIFLIB_LIBRARY AND GIFLIB_INCLUDE_DIR)
+          message(STATUS "✓ Using system giflib: ${GIFLIB_LIBRARY}")
+          message(WARNING "System giflib requires runtime dependency: ${GIFLIB_LIBRARY}")
+          set(GIFLIB_FOUND TRUE)
+      else()
+          message(FATAL_ERROR "WEBP4J_USE_SYSTEM_GIFLIB=ON but system giflib not found. Install via: brew install giflib (macOS) or apt install libgif-dev (Linux)")
+      endif()
   else()
-      message(STATUS "✗ System giflib not found, trying alternatives...")
+      # Default: Build giflib statically for maximum portability
+      message(STATUS "Building giflib statically (no runtime dependencies)")
 
-      # Tier 2: Check if giflib source is bundled in project
+      # Tier 1: Check if giflib source is bundled in project
       if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/giflib/gif_lib.h")
           message(STATUS "✓ Using bundled giflib from giflib/ subdirectory")
           add_subdirectory(giflib EXCLUDE_FROM_ALL)
           set(GIFLIB_LIBRARY gif)
           set(GIFLIB_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/giflib")
           set(GIFLIB_FOUND TRUE)
+          set(GIFLIB_STATIC TRUE)
       else()
-          # Tier 3: Auto-download and build giflib from official source
+          # Tier 2: Auto-download and build giflib from official source
           message(STATUS "Downloading giflib from official SourceForge repository...")
 
           include(FetchContent)
@@ -189,7 +205,8 @@ target_include_directories(gif PUBLIC ${GIFLIB_SOURCE_DIR})
               set(GIFLIB_LIBRARY gif)
               set(GIFLIB_INCLUDE_DIR ${GIFLIB_SOURCE_DIR})
               set(GIFLIB_FOUND TRUE)
-              message(STATUS "✓ giflib downloaded and configured successfully")
+              set(GIFLIB_STATIC TRUE)
+              message(STATUS "✓ giflib downloaded and configured for static linking")
           endif()
       endif()
   endif()
