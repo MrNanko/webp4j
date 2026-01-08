@@ -223,13 +223,13 @@ target_include_directories(gif PUBLIC ${GIFLIB_SOURCE_DIR})
   # Link libraries
   # - webp (main library)
   # - sharpyuv (libwebp dependency)
-  # - webpmux (required for animated WebP encoding)
+  # - libwebpmux (required for animated WebP encoding)
   # - gif (optional, for native GIF decoding)
   target_link_libraries(webp4j PRIVATE
       ${JNI_LIBRARIES}
       webp
       sharpyuv
-      webpmux
+      libwebpmux
   )
 
   # Link giflib if available
