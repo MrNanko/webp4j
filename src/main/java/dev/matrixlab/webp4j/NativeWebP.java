@@ -48,6 +48,79 @@ public class NativeWebP {
      */
     public static native boolean decodeRGBAInto(byte[] data, byte[] outputBuffer, int outputStride);
 
+    /**
+     * Gets information about a GIF file using native giflib.
+     *
+     * @param gifData GIF image bytes
+     * @param info AnimationInfo object to populate (via JNI field access)
+     * @return True on success, false on failure
+     */
+    public static native boolean getGifInfo(byte[] gifData, AnimationInfo info);
+
+    /**
+     * Converts GIF data to WebP format using native giflib decoder.
+     * This is the primary (fast) path using native GIF decoding.
+     *
+     * @param gifData GIF image bytes
+     * @param quality Quality factor (0-100)
+     * @param lossless True for lossless encoding
+     * @param compressionMethod Compression method (0-6)
+     * @param extractFirstFrameOnly True to extract only first frame
+     * @param loopCount Loop count (0=infinite, -1=use GIF's)
+     * @param kmin Minimum key-frame distance
+     * @param kmax Maximum key-frame distance
+     * @param minimizeSize True to minimize output size
+     * @param allowMixed True to allow mixed compression
+     * @return WebP encoded byte array, or null on failure
+     */
+    public static native byte[] encodeGifToWebP(
+            byte[] gifData,
+            float quality,
+            boolean lossless,
+            int compressionMethod,
+            boolean extractFirstFrameOnly,
+            int loopCount,
+            int kmin,
+            int kmax,
+            boolean minimizeSize,
+            boolean allowMixed
+    );
+
+    /**
+     * Encodes animated WebP from Java-decoded GIF frames.
+     * This is used when GIF is decoded by Java ImageIO (fallback path).
+     *
+     * Uses WebPAnimEncoder API to create animated WebP.
+     *
+     * @param frames Array of RGBA frame data (each frame is width * height * 4 bytes)
+     * @param delays Array of frame delays in milliseconds
+     * @param width Canvas width
+     * @param height Canvas height
+     * @param quality Quality factor (0-100)
+     * @param lossless True for lossless encoding
+     * @param compressionMethod Compression method (0-6)
+     * @param loopCount Loop count (0=infinite)
+     * @param kmin Minimum key-frame distance
+     * @param kmax Maximum key-frame distance
+     * @param minimizeSize True to minimize output size
+     * @param allowMixed True to allow mixed compression
+     * @return WebP encoded byte array, or null on failure
+     */
+    public static native byte[] encodeAnimatedWebP(
+            byte[][] frames,
+            int[] delays,
+            int width,
+            int height,
+            float quality,
+            boolean lossless,
+            int compressionMethod,
+            int loopCount,
+            int kmin,
+            int kmax,
+            boolean minimizeSize,
+            boolean allowMixed
+    );
+
     // Use the NativeLibraryLoaderUtils to load the native library
     static void loadNativeLibrary() {
         if (!nativeLibraryLoaded) {

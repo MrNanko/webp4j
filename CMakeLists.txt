@@ -37,7 +37,7 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
       set(WEBP_BUILD_IMG2WEBP OFF CACHE BOOL "" FORCE)
       set(WEBP_BUILD_VWEBP OFF CACHE BOOL "" FORCE)
       set(WEBP_BUILD_WEBPINFO OFF CACHE BOOL "" FORCE)
-      set(WEBP_BUILD_WEBPMUX OFF CACHE BOOL "" FORCE)
+      set(WEBP_BUILD_WEBPMUX ON CACHE BOOL "" FORCE)
       set(WEBP_BUILD_EXTRAS OFF CACHE BOOL "" FORCE)
 
       # Conditionally disable CPU-specific SIMD optimizations for QEMU build environments
@@ -99,6 +99,101 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
       # We only need to build libwebp statically and link it into our webp4j library
       add_subdirectory(libwebp EXCLUDE_FROM_ALL)
 
+  # ============================================
+  # giflib Detection and Configuration
+  # ============================================
+  #
+  # Strategy: 3-tier fallback system for maximum compatibility
+  #
+  # Tier 1: System-installed giflib (fastest, preferred)
+  #   - Uses system package manager version (apt/brew/yum/pacman)
+  #   - User should install via: brew install giflib (macOS) or apt install libgif-dev (Linux)
+  #
+  # Tier 2: Bundled source in project (offline-friendly)
+  #   - For users who manually download giflib source to giflib/ directory
+  #
+  # Tier 3: Auto-download from official source (fully automatic)
+  #   - Downloads latest giflib from SourceForge official repository
+  #
+  # ============================================
+
+  # Tier 1: Try to find system-installed giflib
+  find_library(GIFLIB_LIBRARY NAMES gif libgif)
+  find_path(GIFLIB_INCLUDE_DIR gif_lib.h)
+
+  if(GIFLIB_LIBRARY AND GIFLIB_INCLUDE_DIR)
+      message(STATUS "✓ Using system giflib: ${GIFLIB_LIBRARY}")
+      set(GIFLIB_FOUND TRUE)
+  else()
+      message(STATUS "✗ System giflib not found, trying alternatives...")
+
+      # Tier 2: Check if giflib source is bundled in project
+      if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/giflib/gif_lib.h")
+          message(STATUS "✓ Using bundled giflib from giflib/ subdirectory")
+          add_subdirectory(giflib EXCLUDE_FROM_ALL)
+          set(GIFLIB_LIBRARY gif)
+          set(GIFLIB_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/giflib")
+          set(GIFLIB_FOUND TRUE)
+      else()
+          # Tier 3: Auto-download and build giflib from official source
+          message(STATUS "Downloading giflib from official SourceForge repository...")
+
+          include(FetchContent)
+
+          # Download giflib 5.2.2 (June 2024): Latest stable release with security fixes
+          # Official repo: https://sourceforge.net/projects/giflib/
+          FetchContent_Declare(
+              giflib
+              GIT_REPOSITORY https://git.code.sf.net/p/giflib/code
+              GIT_TAG        5.2.2
+              GIT_SHALLOW    TRUE
+          )
+
+          FetchContent_GetProperties(giflib)
+          if(NOT giflib_POPULATED)
+              message(STATUS "Downloading giflib source code...")
+              FetchContent_Populate(giflib)
+
+              # Build giflib manually (giflib uses autotools, not CMake)
+              # We create a minimal CMakeLists.txt to compile only what we need
+              set(GIFLIB_SOURCE_DIR ${giflib_SOURCE_DIR})
+              set(GIFLIB_BUILD_DIR ${CMAKE_BINARY_DIR}/giflib-build)
+              file(MAKE_DIRECTORY ${GIFLIB_BUILD_DIR})
+
+              # Create a minimal CMakeLists.txt for giflib
+              # We only compile the core library files needed for GIF decoding
+              file(WRITE ${GIFLIB_BUILD_DIR}/CMakeLists.txt "
+cmake_minimum_required(VERSION 3.15)
+project(giflib C)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+# Build static library with core GIF decoding/encoding functions
+add_library(gif STATIC
+    ${GIFLIB_SOURCE_DIR}/dgif_lib.c      # GIF decoder
+    ${GIFLIB_SOURCE_DIR}/egif_lib.c      # GIF encoder
+    ${GIFLIB_SOURCE_DIR}/gifalloc.c      # Memory allocation
+    ${GIFLIB_SOURCE_DIR}/gif_err.c       # Error handling
+    ${GIFLIB_SOURCE_DIR}/gif_font.c      # Font support
+    ${GIFLIB_SOURCE_DIR}/gif_hash.c      # Hash table
+    ${GIFLIB_SOURCE_DIR}/openbsd-reallocarray.c  # Safe realloc
+)
+
+target_include_directories(gif PUBLIC ${GIFLIB_SOURCE_DIR})
+")
+
+              # Add giflib as subdirectory
+              add_subdirectory(${GIFLIB_BUILD_DIR} ${CMAKE_BINARY_DIR}/giflib-build-bin EXCLUDE_FROM_ALL)
+
+              set(GIFLIB_LIBRARY gif)
+              set(GIFLIB_INCLUDE_DIR ${GIFLIB_SOURCE_DIR})
+              set(GIFLIB_FOUND TRUE)
+              message(STATUS "✓ giflib downloaded and configured successfully")
+          endif()
+      endif()
+  endif()
+
   # Add header file search paths
   include_directories(
       ${CMAKE_CURRENT_SOURCE_DIR}/src/main/c
@@ -106,11 +201,21 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
       ${CMAKE_CURRENT_BINARY_DIR}/libwebp/src
   )
 
+  if(GIFLIB_FOUND)
+      include_directories(${GIFLIB_INCLUDE_DIR})
+  endif()
+
   # Source files
-  set(SOURCES
-      src/main/c/webp4j.c
-      # Add other source files
-  )
+  set(SOURCES src/main/c/webp4j.c)
+
+  # Add GIF decoder if giflib is available
+  if(GIFLIB_FOUND)
+      list(APPEND SOURCES src/main/c/gif_decoder.c)
+      add_compile_definitions(HAVE_GIFLIB=1)
+      message(STATUS "GIF decoder enabled")
+  else()
+      message(STATUS "GIF decoder disabled (giflib not available)")
+  endif()
 
   # Create shared library
   add_library(webp4j SHARED ${SOURCES})
@@ -118,12 +223,19 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
   # Link libraries
   # - webp (main library)
   # - sharpyuv (libwebp dependency)
-  # - webpmux and webpdemux (optional, but recommended for full functionality)
+  # - webpmux (required for animated WebP encoding)
+  # - gif (optional, for native GIF decoding)
   target_link_libraries(webp4j PRIVATE
       ${JNI_LIBRARIES}
       webp
       sharpyuv
+      webpmux
   )
+
+  # Link giflib if available
+  if(GIFLIB_FOUND)
+      target_link_libraries(webp4j PRIVATE ${GIFLIB_LIBRARY})
+  endif()
 
   # On Linux, use --whole-archive to ensure all symbols are included
   if(UNIX AND NOT APPLE)

@@ -71,6 +71,30 @@ JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_NativeWebP_decodeRGBInto
 JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_NativeWebP_decodeRGBAInto
   (JNIEnv *, jclass, jbyteArray, jbyteArray, jint);
 
+/*
+ * Class:     dev_matrixlab_webp4j_NativeWebP
+ * Method:    getGifInfo
+ * Signature: ([BLdev/matrixlab/webp4j/AnimationInfo;)Z
+ */
+JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_NativeWebP_getGifInfo
+  (JNIEnv *, jclass, jbyteArray, jobject);
+
+/*
+ * Class:     dev_matrixlab_webp4j_NativeWebP
+ * Method:    encodeGifToWebP
+ * Signature: ([BFZIZIIIZZ)[B
+ */
+JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeGifToWebP
+  (JNIEnv *, jclass, jbyteArray, jfloat, jboolean, jint, jboolean, jint, jint, jint, jboolean, jboolean);
+
+/*
+ * Class:     dev_matrixlab_webp4j_NativeWebP
+ * Method:    encodeAnimatedWebP
+ * Signature: ([[B[IIIFZIIIIZZ)[B
+ */
+JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeAnimatedWebP
+  (JNIEnv *, jclass, jobjectArray, jintArray, jint, jint, jfloat, jboolean, jint, jint, jint, jint, jboolean, jboolean);
+
 #ifdef __cplusplus
 }
 #endif
