@@ -24,6 +24,9 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
   # Set global compiler optimization flags for QEMU builds BEFORE adding dependencies
   # This ensures libwebp and giflib inherit the correct optimization level
   if(DEFINED ENV{WEBP4J_QEMU_BUILD} AND "$ENV{WEBP4J_QEMU_BUILD}" STREQUAL "1")
+      # Use add_compile_options to ensure ALL targets (including subdirectories) use -O1
+      # This overrides any optimization flags added by subdirectories
+      add_compile_options(-O1)
       set(CMAKE_C_FLAGS_RELEASE "-O1 -DNDEBUG" CACHE STRING "Flags used by C compiler during release builds" FORCE)
       set(CMAKE_CXX_FLAGS_RELEASE "-O1 -DNDEBUG" CACHE STRING "Flags used by CXX compiler during release builds" FORCE)
       message(STATUS "Global compiler optimization: -O1 (QEMU build environment)")
