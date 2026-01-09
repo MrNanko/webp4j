@@ -24,13 +24,20 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
   # Set global compiler optimization flags for QEMU builds BEFORE adding dependencies
   # This ensures libwebp and giflib inherit the correct optimization level
   if(DEFINED ENV{WEBP4J_QEMU_BUILD} AND "$ENV{WEBP4J_QEMU_BUILD}" STREQUAL "1")
-      # Use add_compile_options to ensure ALL targets (including subdirectories) use -O1
-      # This overrides any optimization flags added by subdirectories
-      add_compile_options(-O1)
-      set(CMAKE_C_FLAGS_RELEASE "-O1 -DNDEBUG" CACHE STRING "Flags used by C compiler during release builds" FORCE)
-      set(CMAKE_CXX_FLAGS_RELEASE "-O1 -DNDEBUG" CACHE STRING "Flags used by CXX compiler during release builds" FORCE)
+      # QEMU builds: Force -O1 to prevent GCC crashes in emulated environments
+      # We need to:
+      # 1. Set base flags without optimization
+      # 2. Add -O1 to CMAKE_C_FLAGS and CMAKE_CXX_FLAGS to override subdirectory flags
+      set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG" CACHE STRING "Flags used by C compiler during release builds" FORCE)
+      set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG" CACHE STRING "Flags used by CXX compiler during release builds" FORCE)
+
+      # Append -O1 to base flags - this will appear LAST in the command line
+      string(APPEND CMAKE_C_FLAGS " -O1")
+      string(APPEND CMAKE_CXX_FLAGS " -O1")
+
       message(STATUS "Global compiler optimization: -O1 (QEMU build environment)")
   else()
+      # Native builds: Use maximum optimization
       set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG" CACHE STRING "Flags used by C compiler during release builds" FORCE)
       set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG" CACHE STRING "Flags used by CXX compiler during release builds" FORCE)
       message(STATUS "Global compiler optimization: -O3 (native build)")
