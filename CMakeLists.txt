@@ -21,6 +21,18 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
   endif()
   message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
+  # Set global compiler optimization flags for QEMU builds BEFORE adding dependencies
+  # This ensures libwebp and giflib inherit the correct optimization level
+  if(DEFINED ENV{WEBP4J_QEMU_BUILD} AND "$ENV{WEBP4J_QEMU_BUILD}" STREQUAL "1")
+      set(CMAKE_C_FLAGS_RELEASE "-O1 -DNDEBUG" CACHE STRING "Flags used by C compiler during release builds" FORCE)
+      set(CMAKE_CXX_FLAGS_RELEASE "-O1 -DNDEBUG" CACHE STRING "Flags used by CXX compiler during release builds" FORCE)
+      message(STATUS "Global compiler optimization: -O1 (QEMU build environment)")
+  else()
+      set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG" CACHE STRING "Flags used by C compiler during release builds" FORCE)
+      set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG" CACHE STRING "Flags used by CXX compiler during release builds" FORCE)
+      message(STATUS "Global compiler optimization: -O3 (native build)")
+  endif()
+
   # Find JNI
   find_package(JNI REQUIRED)
   include_directories(${JNI_INCLUDE_DIRS})
@@ -266,25 +278,14 @@ target_include_directories(gif PUBLIC ${GIFLIB_SOURCE_DIR})
   endif()
 
   # ============================================
-  # Compiler Optimization Options
+  # Compiler Warning Options
   # ============================================
 
-  # Set optimization level based on build environment
-  if(DEFINED ENV{WEBP4J_QEMU_BUILD} AND "$ENV{WEBP4J_QEMU_BUILD}" STREQUAL "1")
-      set(RELEASE_OPTIMIZATION_LEVEL "-O1")  # QEMU: use basic optimization to avoid gcc crashes
-      message(STATUS "Compiler optimization: -O1 (QEMU build environment)")
-  else()
-      set(RELEASE_OPTIMIZATION_LEVEL "-O3")  # Normal: use maximum optimization
-      message(STATUS "Compiler optimization: -O3 (native build)")
-  endif()
-
-  # Set compiler warnings and optimization options
   if(MSVC)
       # MSVC compiler options
       target_compile_options(webp4j PRIVATE
           /W4                 # Warning level 4
           /WX-                # Warnings not as errors
-          /O2                 # Release optimization
       )
   else()
       # GCC/Clang compiler options
@@ -292,10 +293,8 @@ target_include_directories(gif PUBLIC ${GIFLIB_SOURCE_DIR})
           -Wall               # Enable all warnings
           -Wextra             # Enable extra warnings
           -pedantic           # Strict standard compliance
-          $<$<CONFIG:Release>:${RELEASE_OPTIMIZATION_LEVEL}>  # Release mode: conditional optimization
-          $<$<CONFIG:Release>:-DNDEBUG>       # Release mode: disable assertions
-          $<$<CONFIG:Debug>:-g>               # Debug mode: debug info
-          $<$<CONFIG:Debug>:-O0>              # Debug mode: no optimization
+          $<$<CONFIG:Debug>:-g>    # Debug mode: debug info
+          $<$<CONFIG:Debug>:-O0>   # Debug mode: no optimization
       )
 
       # Link-time optimization (LTO)
