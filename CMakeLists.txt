@@ -264,6 +264,15 @@ target_include_directories(gif PUBLIC ${GIFLIB_SOURCE_DIR})
   # Compiler Optimization Options
   # ============================================
 
+  # Set optimization level based on build environment
+  if(DEFINED ENV{WEBP4J_QEMU_BUILD} AND "$ENV{WEBP4J_QEMU_BUILD}" STREQUAL "1")
+      set(RELEASE_OPTIMIZATION_LEVEL "-O1")  # QEMU: use basic optimization to avoid gcc crashes
+      message(STATUS "Compiler optimization: -O1 (QEMU build environment)")
+  else()
+      set(RELEASE_OPTIMIZATION_LEVEL "-O3")  # Normal: use maximum optimization
+      message(STATUS "Compiler optimization: -O3 (native build)")
+  endif()
+
   # Set compiler warnings and optimization options
   if(MSVC)
       # MSVC compiler options
@@ -278,7 +287,7 @@ target_include_directories(gif PUBLIC ${GIFLIB_SOURCE_DIR})
           -Wall               # Enable all warnings
           -Wextra             # Enable extra warnings
           -pedantic           # Strict standard compliance
-          $<$<CONFIG:Release>:-O3>            # Release mode: maximum optimization
+          $<$<CONFIG:Release>:${RELEASE_OPTIMIZATION_LEVEL}>  # Release mode: conditional optimization
           $<$<CONFIG:Release>:-DNDEBUG>       # Release mode: disable assertions
           $<$<CONFIG:Debug>:-g>               # Debug mode: debug info
           $<$<CONFIG:Debug>:-O0>              # Debug mode: no optimization
