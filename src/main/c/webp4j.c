@@ -776,7 +776,8 @@ JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeGifToWeb
 
     enc_options.anim_params.loop_count = (loopCount == -1) ?
         gif_result->loop_count : loopCount;
-    enc_options.anim_params.bgcolor = gif_result->bgcolor;
+    // Force alpha=0 to preserve transparency in WebP output
+    enc_options.anim_params.bgcolor = gif_result->bgcolor & 0x00FFFFFF;
     enc_options.kmin = kmin;
     enc_options.kmax = kmax;
     enc_options.minimize_size = minimizeSize ? 1 : 0;

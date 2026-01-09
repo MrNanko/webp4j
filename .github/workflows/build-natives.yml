@@ -1,4 +1,4 @@
-name: Build Native Libraries (Reusable)
+name: Build Native Libraries
 
 on:
   workflow_call:

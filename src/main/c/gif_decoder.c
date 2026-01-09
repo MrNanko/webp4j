@@ -35,7 +35,8 @@ static uint32_t GetBackgroundColor(GifFileType* gif) {
     }
 
     GifColorType* color = &gif->SColorMap->Colors[bg_index];
-    return 0xFF000000 | (color->Red << 16) | (color->Green << 8) | color->Blue;
+    // Return RGB color with alpha=0 to preserve transparency
+    return (color->Red << 16) | (color->Green << 8) | color->Blue;
 }
 
 // Convert palette index to RGBA color
