@@ -292,7 +292,7 @@ target_include_directories(gif PUBLIC ${GIFLIB_SOURCE_DIR})
           -Wall               # Enable all warnings
           -Wextra             # Enable extra warnings
           -pedantic           # Strict standard compliance
-          $<$<CONFIG:Release>:-O3>  # Release mode: conditional optimization
+          $<$<CONFIG:Release>:${RELEASE_OPTIMIZATION_LEVEL}>  # Release mode: conditional optimization
           $<$<CONFIG:Release>:-DNDEBUG>       # Release mode: disable assertions
           $<$<CONFIG:Debug>:-g>               # Debug mode: debug info
           $<$<CONFIG:Debug>:-O0>              # Debug mode: no optimization
