@@ -259,14 +259,31 @@ public final class WebPCodec {
                         DataBufferInt dataBufferInt = (DataBufferInt) dataBuffer;
                         int[] intPixels = dataBufferInt.getData();
                         int index = 0;
+                        boolean isPremultiplied = (imageType == BufferedImage.TYPE_INT_ARGB_PRE);
 
                         // Use direct array access for maximum speed
                         if (hasAlpha) {
                             for (int pixel : intPixels) {
-                                output[index++] = (byte) ((pixel >> 16) & 0xFF); // Red
-                                output[index++] = (byte) ((pixel >> 8) & 0xFF);  // Green
-                                output[index++] = (byte) (pixel & 0xFF);         // Blue
-                                output[index++] = (byte) ((pixel >> 24) & 0xFF); // Alpha
+                                int a = (pixel >> 24) & 0xFF;
+                                int r = (pixel >> 16) & 0xFF;
+                                int g = (pixel >> 8) & 0xFF;
+                                int b = pixel & 0xFF;
+
+                                // Unpremultiply alpha if needed to avoid dark/black edges
+                                if (isPremultiplied && a > 0 && a < 255) {
+                                    r = (r * 255 + (a >> 1)) / a;
+                                    g = (g * 255 + (a >> 1)) / a;
+                                    b = (b * 255 + (a >> 1)) / a;
+                                    // Clamp values to [0, 255]
+                                    r = Math.min(255, r);
+                                    g = Math.min(255, g);
+                                    b = Math.min(255, b);
+                                }
+
+                                output[index++] = (byte) r; // Red
+                                output[index++] = (byte) g; // Green
+                                output[index++] = (byte) b; // Blue
+                                output[index++] = (byte) a; // Alpha
                             }
                         } else {
                             for (int pixel : intPixels) {
@@ -350,32 +367,31 @@ public final class WebPCodec {
                         DataBufferByte dataBufferByte = (DataBufferByte) dataBuffer;
                         byte[] abgrBytes = dataBufferByte.getData();
                         int index = 0;
+                        boolean isPremultiplied = (imageType == BufferedImage.TYPE_4BYTE_ABGR_PRE);
+
                         if (hasAlpha) {
-                            // Similar loop unrolling for 4-byte pixels
-                            int maxIndex = abgrBytes.length - 7;
-                            int i = 0;
+                            // Process all pixels with unpremultiply support
+                            for (int i = 0; i < abgrBytes.length; i += 4) {
+                                int a = abgrBytes[i] & 0xFF;      // Alpha
+                                int b = abgrBytes[i + 1] & 0xFF;  // Blue
+                                int g = abgrBytes[i + 2] & 0xFF;  // Green
+                                int r = abgrBytes[i + 3] & 0xFF;  // Red
 
-                            // Process 2 pixels (8 bytes) at a time
-                            for (; i < maxIndex; i += 8) {
-                                // Pixel 1
-                                output[index++] = abgrBytes[i + 3];  // Red
-                                output[index++] = abgrBytes[i + 2];  // Green
-                                output[index++] = abgrBytes[i + 1];  // Blue
-                                output[index++] = abgrBytes[i];      // Alpha
+                                // Unpremultiply alpha if needed to avoid dark/black edges
+                                if (isPremultiplied && a > 0 && a < 255) {
+                                    r = (r * 255 + (a >> 1)) / a;
+                                    g = (g * 255 + (a >> 1)) / a;
+                                    b = (b * 255 + (a >> 1)) / a;
+                                    // Clamp values to [0, 255]
+                                    r = Math.min(255, r);
+                                    g = Math.min(255, g);
+                                    b = Math.min(255, b);
+                                }
 
-                                // Pixel 2
-                                output[index++] = abgrBytes[i + 7];  // Red
-                                output[index++] = abgrBytes[i + 6];  // Green
-                                output[index++] = abgrBytes[i + 5];  // Blue
-                                output[index++] = abgrBytes[i + 4];  // Alpha
-                            }
-
-                            // Handle remaining pixels
-                            for (; i < abgrBytes.length; i += 4) {
-                                output[index++] = abgrBytes[i + 3];  // Red
-                                output[index++] = abgrBytes[i + 2];  // Green
-                                output[index++] = abgrBytes[i + 1];  // Blue
-                                output[index++] = abgrBytes[i];      // Alpha
+                                output[index++] = (byte) r;  // Red
+                                output[index++] = (byte) g;  // Green
+                                output[index++] = (byte) b;  // Blue
+                                output[index++] = (byte) a;  // Alpha
                             }
                         } else {
                             // When hasAlpha is false but image has 4 bytes per pixel
