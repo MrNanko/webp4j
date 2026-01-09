@@ -138,7 +138,7 @@ jobs:
   # Linux ARM64 Build - Native (Priority: Self-hosted)
   # ============================================
   build-linux-arm64-native:
-    runs-on: [self-hosted, linux-arm64]
+    runs-on: self-hosted
     timeout-minutes: 15
     continue-on-error: true  # Allow fallback to QEMU if self-hosted not available
     steps:
