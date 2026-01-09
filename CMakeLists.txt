@@ -71,6 +71,11 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
           set(WEBP_BUILD_SSE2 OFF CACHE BOOL "" FORCE)
           set(WEBP_BUILD_SSE41 OFF CACHE BOOL "" FORCE)
           set(WEBP_BUILD_AVX2 OFF CACHE BOOL "" FORCE)
+          # Additional runtime detection flags
+          set(WEBP_ENABLE_SIMD_AVX2 OFF CACHE BOOL "" FORCE)
+          set(WEBP_HAVE_SSE2 OFF CACHE BOOL "" FORCE)
+          set(WEBP_HAVE_SSE41 OFF CACHE BOOL "" FORCE)
+          set(WEBP_HAVE_AVX2 OFF CACHE BOOL "" FORCE)
       else()
           message(STATUS "SIMD optimizations: ENABLED (default)")
       endif()
@@ -287,7 +292,7 @@ target_include_directories(gif PUBLIC ${GIFLIB_SOURCE_DIR})
           -Wall               # Enable all warnings
           -Wextra             # Enable extra warnings
           -pedantic           # Strict standard compliance
-          $<$<CONFIG:Release>:${RELEASE_OPTIMIZATION_LEVEL}>  # Release mode: conditional optimization
+          $<$<CONFIG:Release>:-O3>  # Release mode: conditional optimization
           $<$<CONFIG:Release>:-DNDEBUG>       # Release mode: disable assertions
           $<$<CONFIG:Debug>:-g>               # Debug mode: debug info
           $<$<CONFIG:Debug>:-O0>              # Debug mode: no optimization
