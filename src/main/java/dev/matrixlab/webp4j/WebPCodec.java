@@ -448,4 +448,201 @@ public final class WebPCodec {
         }
     }
 
+
+
+    // ============================================
+    // GIF to WebP Conversion Methods
+    // ============================================
+
+    /**
+     * Gets information about a GIF image without performing full conversion.
+     * <p>
+     * This is useful for determining whether a GIF is animated, its dimensions,
+     * and other properties before deciding how to convert it.
+     *
+     * @param gifData Byte array containing the GIF image data
+     * @return AnimationInfo containing frame count, dimensions, loop count, and transparency info
+     * @throws IOException If reading GIF information fails
+     * @throws IllegalArgumentException If gifData is null or empty
+     */
+    public static AnimationInfo getGifInfo(byte[] gifData) throws IOException {
+        if (gifData == null || gifData.length == 0) {
+            throw new IllegalArgumentException("GIF data cannot be null or empty");
+        }
+
+        AnimationInfo info = new AnimationInfo();
+
+        // Try native path first
+        try {
+            boolean success = NativeWebP.getGifInfo(gifData, info);
+            if (success) {
+                return info;
+            }
+        } catch (UnsatisfiedLinkError e) {
+            // Native library not available, fall back to Java ImageIO
+        }
+
+        // If native path returned false or library unavailable, use Java ImageIO fallback
+        boolean success = GifDecoderJava.getGifInfo(gifData, info);
+        if (!success) {
+            throw new IOException("Failed to read GIF information");
+        }
+
+        return info;
+    }
+
+    /**
+     * Converts a GIF image to WebP format with default lossy settings.
+     * <p>
+     * This is a convenience method that uses quality factor 75 and lossy compression.
+     * For more control over the conversion, use {@link #encodeGifToWebP(byte[], GifToWebPConfig)}.
+     *
+     * @param gifData Byte array containing the GIF image data
+     * @return Byte array containing the WebP encoded image
+     * @throws IOException If conversion fails
+     */
+    public static byte[] encodeGifToWebP(byte[] gifData) throws IOException {
+        return encodeGifToWebP(gifData, new GifToWebPConfig());
+    }
+
+    /**
+     * Converts a GIF image to WebP format.
+     * <p>
+     * This method automatically detects whether the GIF is static or animated,
+     * and handles both cases appropriately. It uses a dual-path approach:
+     * <ul>
+     *   <li>Primary: Native giflib decoder (fast, complete GIF support)</li>
+     *   <li>Fallback: Java ImageIO decoder (slower, but works when native library unavailable)</li>
+     * </ul>
+     *
+     * @param gifData Byte array containing the GIF image data
+     * @param config Configuration for conversion (quality, lossless, compression, etc.)
+     * @return Byte array containing the WebP encoded image
+     * @throws IOException If conversion fails
+     * @throws IllegalArgumentException If gifData or config is null
+     */
+    public static byte[] encodeGifToWebP(byte[] gifData, GifToWebPConfig config) throws IOException {
+        if (gifData == null || gifData.length == 0) {
+            throw new IllegalArgumentException("GIF data cannot be null or empty");
+        }
+        if (config == null) {
+            throw new IllegalArgumentException("Config cannot be null");
+        }
+
+        // Try native path first (giflib + JNI) for best performance
+        byte[] result = null;
+        try {
+            result = NativeWebP.encodeGifToWebP(
+                    gifData,
+                    config.getQuality(),
+                    config.isLossless(),
+                    config.getCompressionMethod(),
+                    config.isExtractFirstFrameOnly(),
+                    config.getLoopCount(),
+                    config.getKmin(),
+                    config.getKmax(),
+                    config.isMinimizeSize(),
+                    config.isAllowMixed()
+            );
+
+            if (result != null && result.length > 0) {
+                return result;  // Success via native path
+            }
+        } catch (UnsatisfiedLinkError e) {
+            // Native library not available, fall back to Java ImageIO
+        }
+
+        // If native path returned null or failed to load, try Java ImageIO fallback
+        if (result == null) {
+            return encodeGifToWebPUsingJavaImageIO(gifData, config);
+        }
+
+        throw new IOException("Native GIF encoding returned empty result");
+    }
+
+    /**
+     * Converts a GIF image to lossless WebP format.
+     * <p>
+     * This is a convenience method that uses lossless compression to preserve
+     * the original GIF quality without any loss.
+     *
+     * @param gifData Byte array containing the GIF image data
+     * @return Byte array containing the lossless WebP encoded image
+     * @throws IOException If conversion fails
+     */
+    public static byte[] encodeGifToWebPLossless(byte[] gifData) throws IOException {
+        return encodeGifToWebP(gifData, GifToWebPConfig.createLosslessConfig());
+    }
+
+    /**
+     * Fallback implementation: Encodes GIF to WebP using Java ImageIO for GIF decoding.
+     * <p>
+     * This method is used when native giflib is unavailable. It decodes the GIF
+     * using Java's ImageIO, then encodes to WebP using native WebPAnimEncoder.
+     * <p>
+     * Note: Even in fallback mode, WebP encoding still requires native library
+     * (WebPAnimEncoder for animated images, or existing encode methods for static images).
+     * <p>
+     * Package-private for testing purposes.
+     *
+     * @param gifData Byte array containing the GIF image data
+     * @param config Configuration for conversion
+     * @return Byte array containing the WebP encoded image
+     * @throws IOException If conversion fails
+     */
+    static byte[] encodeGifToWebPUsingJavaImageIO(byte[] gifData, GifToWebPConfig config) throws IOException {
+        // Decode GIF using Java ImageIO
+        GifDecoderJava.GifData gif = GifDecoderJava.decodeGif(gifData);
+
+        if (config.isExtractFirstFrameOnly() || gif.frames.size() == 1) {
+            // Static GIF or extract first frame only: use existing single-frame encoding
+            BufferedImage firstFrame = gif.frames.get(0).image;
+            return encodeImage(firstFrame, config.getQuality(), config.isLossless());
+        }
+
+        // Animated GIF: encode all frames using native WebPAnimEncoder
+        // Convert frames to RGBA byte arrays
+        byte[][] frameData = new byte[gif.frames.size()][];
+        int[] delays = new int[gif.frames.size()];
+
+        try {
+            for (int i = 0; i < gif.frames.size(); i++) {
+                GifDecoderJava.GifFrame frame = gif.frames.get(i);
+
+                frameData[i] = convertBufferedImageToBytes(frame.image);
+                delays[i] = frame.delayMs;
+            }
+
+            // Use native WebPAnimEncoder for animated output
+            byte[] result = NativeWebP.encodeAnimatedWebP(
+                    frameData,
+                    delays,
+                    gif.width,
+                    gif.height,
+                    config.getQuality(),
+                    config.isLossless(),
+                    config.getCompressionMethod(),
+                    config.getLoopCount() == -1 ? gif.loopCount : config.getLoopCount(),
+                    config.getKmin(),
+                    config.getKmax(),
+                    config.isMinimizeSize(),
+                    config.isAllowMixed()
+            );
+
+            if (result == null || result.length == 0) {
+                throw new IOException("Animated WebP encoding failed");
+            }
+
+            return result;
+
+        } finally {
+            // Clear frame data arrays to free memory
+            for (byte[] frame : frameData) {
+                if (frame != null) {
+                    Arrays.fill(frame, (byte) 0);
+                }
+            }
+        }
+    }
+
 }
