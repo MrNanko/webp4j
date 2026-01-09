@@ -135,40 +135,62 @@ jobs:
         retention-days: 7
 
   # ============================================
-  # Linux ARM64 Build (QEMU emulation)
+  # Linux ARM64 Build - Native (Priority: Self-hosted)
   # ============================================
-  build-linux-arm64:
-    runs-on: ubuntu-22.04
+  build-linux-arm64-native:
+    runs-on: [self-hosted, linux-arm64]
+    timeout-minutes: 15
+    continue-on-error: true  # Allow fallback to QEMU if self-hosted not available
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         submodules: recursive
 
-#    - name: Setup Java
-#      uses: actions/setup-java@v4
-#      with:
-#        distribution: 'temurin'
-#        java-version: ${{ env.JAVA_VERSION }}
-#
-#    - name: Install dependencies
-#      run: |
-#        sudo apt-get update
-#        sudo apt-get install -y build-essential cmake
-#
-#    - name: Build
-#      run: |
-#        mkdir build && cd build
-#        cmake -DCMAKE_BUILD_TYPE=Release ..
-#        make -j$(nproc)
-#        make install
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: ${{ env.JAVA_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake
+
+    - name: Build (Native ARM64)
+      run: |
+        mkdir build && cd build
+        cmake -DCMAKE_BUILD_TYPE=Release ..
+        make -j$(nproc)
+        make install
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: webp4j-linux-aarch64
+        path: src/main/resources/native/libwebp4j-linux-aarch64.so
+        retention-days: 7
+
+  # ============================================
+  # Linux ARM64 Build - QEMU (Fallback)
+  # ============================================
+  build-linux-arm64-qemu:
+    runs-on: ubuntu-22.04
+    needs: build-linux-arm64-native
+    if: failure() || cancelled()  # Run only if native build fails or is cancelled
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
 
     - name: Setup QEMU
       uses: docker/setup-qemu-action@v3
       with:
         platforms: arm64
 
-    - name: Build on ARM64
+    - name: Build on ARM64 (QEMU Emulation)
       uses: uraimo/run-on-arch-action@v2
       with:
         arch: aarch64
