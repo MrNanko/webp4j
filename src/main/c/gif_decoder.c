@@ -311,7 +311,11 @@ GifDecodeResult* DecodeGifFromMemory(const uint8_t* data, size_t data_size) {
             if (ext_code == APPLICATION_EXT_FUNC_CODE && extension[0] >= 11) {
                 if (memcmp(extension + 1, "NETSCAPE2.0", 11) == 0) {
                     if (DGifGetExtensionNext(gif, &extension) != GIF_ERROR && extension && extension[0] >= 3) {
-                        result->loop_count = (extension[2] << 8) | extension[1];
+                        // extension[1] is sub-block ID (should be 1)
+                        // extension[2] is loop count low byte
+                        // extension[3] is loop count high byte
+                        // Reference: https://chromium.googlesource.com/webm/libwebp/%2B/0.3.0/examples/gif2webp.c#398
+                        result->loop_count = extension[2] | (extension[3] << 8);
                     }
                 }
             }
@@ -426,7 +430,11 @@ int GetGifInfo(const uint8_t* data, size_t data_size,
             if (ext_code == APPLICATION_EXT_FUNC_CODE && extension[0] >= 11) {
                 if (memcmp(extension + 1, "NETSCAPE2.0", 11) == 0) {
                     if (DGifGetExtensionNext(gif, &extension) != GIF_ERROR && extension && extension[0] >= 3) {
-                        *loop_count = (extension[2] << 8) | extension[1];
+                        // extension[1] is sub-block ID (should be 1)
+                        // extension[2] is loop count low byte
+                        // extension[3] is loop count high byte
+                        // Reference: https://chromium.googlesource.com/webm/libwebp/%2B/0.3.0/examples/gif2webp.c#398
+                        *loop_count = extension[2] | (extension[3] << 8);
                     }
                 }
             }
