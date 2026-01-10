@@ -15,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class WebP4jTest {
 
     private static final String TEST_RESOURCES_DIR = "src/test/resources/";
+    private static final String TEST_OUTPUT_DIR = "target/test-output/";
 
     private static final String FORMAT_PNG = "png";
 
@@ -25,27 +26,36 @@ class WebP4jTest {
     private static final String SOURCE_GIF = TEST_RESOURCES_DIR + "test_gif.gif";
 
     // Generated output files
-    private static final String OUTPUT_RGB_WEBP = TEST_RESOURCES_DIR + "encode_rgb.webp";
-    private static final String OUTPUT_RGBA_WEBP = TEST_RESOURCES_DIR + "encode_rgba.webp";
-    private static final String OUTPUT_LOSSLESS_RGB_WEBP = TEST_RESOURCES_DIR + "encode_lossless_rgb.webp";
-    private static final String OUTPUT_LOSSLESS_RGBA_WEBP = TEST_RESOURCES_DIR + "encode_lossless_rgba.webp";
+    private static final String OUTPUT_RGB_WEBP = TEST_OUTPUT_DIR + "encode_rgb.webp";
+    private static final String OUTPUT_RGBA_WEBP = TEST_OUTPUT_DIR + "encode_rgba.webp";
+    private static final String OUTPUT_LOSSLESS_RGB_WEBP = TEST_OUTPUT_DIR + "encode_lossless_rgb.webp";
+    private static final String OUTPUT_LOSSLESS_RGBA_WEBP = TEST_OUTPUT_DIR + "encode_lossless_rgba.webp";
 
     // GIF to WebP output files
-    private static final String OUTPUT_GIF_TO_WEBP_DEFAULT = TEST_RESOURCES_DIR + "gif_to_webp_default.webp";
-    private static final String OUTPUT_GIF_TO_WEBP_LOSSLESS = TEST_RESOURCES_DIR + "gif_to_webp_lossless.webp";
-    private static final String OUTPUT_GIF_TO_WEBP_FIRST_FRAME = TEST_RESOURCES_DIR + "gif_to_webp_first_frame.webp";
-    private static final String OUTPUT_GIF_TO_WEBP_CUSTOM = TEST_RESOURCES_DIR + "gif_to_webp_custom.webp";
+    private static final String OUTPUT_GIF_TO_WEBP_DEFAULT = TEST_OUTPUT_DIR + "gif_to_webp_default.webp";
+    private static final String OUTPUT_GIF_TO_WEBP_LOSSLESS = TEST_OUTPUT_DIR + "gif_to_webp_lossless.webp";
+    private static final String OUTPUT_GIF_TO_WEBP_FIRST_FRAME = TEST_OUTPUT_DIR + "gif_to_webp_first_frame.webp";
+    private static final String OUTPUT_GIF_TO_WEBP_CUSTOM = TEST_OUTPUT_DIR + "gif_to_webp_custom.webp";
 
     // GIF to WebP output files (Java ImageIO fallback path)
-    private static final String OUTPUT_GIF_TO_WEBP_JAVA_IMAGEIO = TEST_RESOURCES_DIR + "gif_to_webp_java_imageio.webp";
-    private static final String OUTPUT_GIF_TO_WEBP_JAVA_IMAGEIO_LOSSLESS = TEST_RESOURCES_DIR + "gif_to_webp_java_imageio_lossless.webp";
-    private static final String OUTPUT_GIF_TO_WEBP_JAVA_IMAGEIO_FIRST_FRAME = TEST_RESOURCES_DIR + "gif_to_webp_java_imageio_first_frame.webp";
+    private static final String OUTPUT_GIF_TO_WEBP_JAVA_IMAGEIO = TEST_OUTPUT_DIR + "gif_to_webp_java_imageio.webp";
+    private static final String OUTPUT_GIF_TO_WEBP_JAVA_IMAGEIO_LOSSLESS = TEST_OUTPUT_DIR + "gif_to_webp_java_imageio_lossless.webp";
+    private static final String OUTPUT_GIF_TO_WEBP_JAVA_IMAGEIO_FIRST_FRAME = TEST_OUTPUT_DIR + "gif_to_webp_java_imageio_first_frame.webp";
 
     // Decoded output files
-    private static final String OUTPUT_DECODED_RGB_PNG = TEST_RESOURCES_DIR + "decode_rgb.png";
-    private static final String OUTPUT_DECODED_RGBA_PNG = TEST_RESOURCES_DIR + "decoded_rgba.png";
-    private static final String OUTPUT_DECODED_LOSSLESS_RGB_JPG = TEST_RESOURCES_DIR + "decode_lossless_rgb.jpg";
-    private static final String OUTPUT_DECODED_LOSSLESS_RGBA_PNG = TEST_RESOURCES_DIR + "decode_lossless_rgba.png";
+    private static final String OUTPUT_DECODED_RGB_PNG = TEST_OUTPUT_DIR + "decode_rgb.png";
+    private static final String OUTPUT_DECODED_RGBA_PNG = TEST_OUTPUT_DIR + "decoded_rgba.png";
+    private static final String OUTPUT_DECODED_LOSSLESS_RGB_JPG = TEST_OUTPUT_DIR + "decode_lossless_rgb.jpg";
+    private static final String OUTPUT_DECODED_LOSSLESS_RGBA_PNG = TEST_OUTPUT_DIR + "decode_lossless_rgba.png";
+
+    static {
+        // Ensure test output directory exists
+        try {
+            Files.createDirectories(Paths.get(TEST_OUTPUT_DIR));
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to create test output directory: " + TEST_OUTPUT_DIR, e);
+        }
+    }
 
     @Test
     void testGetWebPInfo() {

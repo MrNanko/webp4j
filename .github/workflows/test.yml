@@ -66,10 +66,153 @@ jobs:
         jar tf target/webp4j-*.jar | grep "native/" || echo "No native libraries found in JAR"
       shell: bash
 
-    - name: Upload test results
+    - name: Upload test results and output
       if: always()
       uses: actions/upload-artifact@v4
       with:
         name: test-results-${{ matrix.platform }}
-        path: target/surefire-reports/
+        path: |
+          target/surefire-reports/
+          target/test-output/
+        retention-days: 7
+
+  # ============================================
+  # Linux ARM64 Test - Native (Priority: Self-hosted)
+  # ============================================
+  test-arm64-native:
+    needs: build-natives
+    runs-on: self-hosted
+    timeout-minutes: 15
+    continue-on-error: true  # Allow fallback to QEMU if self-hosted not available
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: ${{ env.JAVA_VERSION }}
+        cache: 'maven'
+
+    - name: Download all native libraries
+      uses: actions/download-artifact@v4
+      with:
+        pattern: webp4j-*
+        merge-multiple: true
+        path: src/main/resources/native
+
+    - name: Display downloaded libraries
+      run: ls -lh src/main/resources/native/
+
+    - name: Run tests (Native ARM64)
+      run: mvn -B test
+
+    - name: Upload test results and output
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-linux-arm64
+        path: |
+          target/surefire-reports/
+          target/test-output/
+        retention-days: 7
+
+  # ============================================
+  # Linux ARM64 Test - QEMU (Fallback)
+  # ============================================
+  test-arm64-qemu:
+    needs: test-arm64-native
+    runs-on: ubuntu-22.04
+    if: failure() || cancelled()  # Run only if native test fails or is cancelled
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download all native libraries
+      uses: actions/download-artifact@v4
+      with:
+        pattern: webp4j-*
+        merge-multiple: true
+        path: src/main/resources/native
+
+    - name: Setup QEMU
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: arm64
+
+    - name: Run tests on ARM64 (QEMU)
+      uses: uraimo/run-on-arch-action@v2
+      with:
+        arch: aarch64
+        distro: ubuntu22.04
+        githubToken: ${{ github.token }}
+        dockerRunArgs: |
+          --volume "${PWD}:/workspace"
+        install: |
+          apt-get update -q -y
+          apt-get install -q -y maven openjdk-21-jdk
+        run: |
+          cd /workspace
+          export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-arm64
+          export PATH="${JAVA_HOME}/bin:${PATH}"
+          mvn -B test
+
+    - name: Upload test results and output
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-linux-arm64
+        path: |
+          target/surefire-reports/
+          target/test-output/
+        retention-days: 7
+
+  # ============================================
+  # Linux ARM32 Test (QEMU emulation)
+  # ============================================
+  test-arm32:
+    needs: build-natives
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download all native libraries
+      uses: actions/download-artifact@v4
+      with:
+        pattern: webp4j-*
+        merge-multiple: true
+        path: src/main/resources/native
+
+    - name: Setup QEMU
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: arm
+
+    - name: Run tests on ARM32 (QEMU)
+      uses: uraimo/run-on-arch-action@v2
+      with:
+        arch: armv7
+        distro: ubuntu22.04
+        githubToken: ${{ github.token }}
+        dockerRunArgs: |
+          --volume "${PWD}:/workspace"
+        install: |
+          apt-get update -q -y
+          apt-get install -q -y maven openjdk-21-jdk
+        run: |
+          cd /workspace
+          export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-armhf
+          export PATH="${JAVA_HOME}/bin:${PATH}"
+          mvn -B test
+
+    - name: Upload test results and output
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results-linux-arm32
+        path: |
+          target/surefire-reports/
+          target/test-output/
         retention-days: 7
