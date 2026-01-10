@@ -7,6 +7,7 @@ import java.awt.image.DataBufferByte;
 import java.awt.image.DataBufferInt;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.function.Supplier;
 
 public final class WebPCodec {
 
@@ -537,7 +538,13 @@ public final class WebPCodec {
                     config.isLossless(),
                     config.getCompressionMethod(),
                     config.isExtractFirstFrameOnly(),
-                    config.getLoopCount(),
+                    config.getLoopCount() == -1 ? ((Supplier<Integer>) () -> {
+                        try {
+                            return getGifInfo(gifData).getLoopCount(); // Use GIF's loop count, default to 0 (infinite loop) if not set
+                        } catch (Exception e) {
+                            return 0; // Default to infinite loop if unable to read GIF info
+                        }
+                    }).get() : config.getLoopCount(),
                     config.getKmin(),
                     config.getKmax(),
                     config.isMinimizeSize(),
