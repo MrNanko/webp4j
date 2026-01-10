@@ -1,5 +1,6 @@
 package dev.matrixlab.webp4j;
 
+import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBuffer;
 import java.awt.image.DataBufferByte;
@@ -448,8 +449,6 @@ public final class WebPCodec {
         }
     }
 
-
-
     // ============================================
     // GIF to WebP Conversion Methods
     // ============================================
@@ -605,12 +604,15 @@ public final class WebPCodec {
         byte[][] frameData = new byte[gif.frames.size()][];
         int[] delays = new int[gif.frames.size()];
 
+        // Maintain a canvas for frame composition (GIF frames may be incremental)
+        BufferedImage canvas = new BufferedImage(gif.width, gif.height, BufferedImage.TYPE_INT_ARGB);
+        BufferedImage previousFrame = null;
+
         try {
             for (int i = 0; i < gif.frames.size(); i++) {
-                GifDecoderJava.GifFrame frame = gif.frames.get(i);
-
-                frameData[i] = convertBufferedImageToBytes(frame.image);
-                delays[i] = frame.delayMs;
+                previousFrame = composeGifFrame(gif, i, canvas, previousFrame);
+                frameData[i] = convertBufferedImageToBytes(canvas);
+                delays[i] = gif.frames.get(i).delayMs;
             }
 
             // Use native WebPAnimEncoder for animated output
@@ -643,6 +645,77 @@ public final class WebPCodec {
                 }
             }
         }
+    }
+
+    /**
+     * Composes a single GIF frame onto a canvas, applying disposal methods and frame composition.
+     * <p>
+     * This method handles the GIF animation frame composition logic:
+     * <ul>
+     *   <li>Applies the previous frame's disposal method (clear or restore)</li>
+     *   <li>Saves the canvas state if needed for future restoration (disposal method 3)</li>
+     *   <li>Draws the current frame onto the canvas at its offset position</li>
+     * </ul>
+     *
+     * @param gif GIF data containing all frames
+     * @param frameIndex Index of the current frame to compose
+     * @param canvas The canvas to draw onto (will be modified)
+     * @param previousFrame The saved previous frame state (for disposal method 3), may be null
+     * @return The updated previousFrame (may be newly created or remain the same)
+     */
+    private static BufferedImage composeGifFrame(GifDecoderJava.GifData gif, int frameIndex,
+                                                  BufferedImage canvas, BufferedImage previousFrame) {
+        GifDecoderJava.GifFrame frame = gif.frames.get(frameIndex);
+
+        // Apply disposal method from the PREVIOUS frame (before drawing current frame)
+        if (frameIndex > 0 && gif.frames.get(frameIndex - 1).disposeMethod == 2) {
+            // Disposal method 2: Restore to background (clear to transparent)
+            Graphics2D g2d = canvas.createGraphics();
+            try {
+                g2d.setComposite(AlphaComposite.Clear);
+                GifDecoderJava.GifFrame prevFrame = gif.frames.get(frameIndex - 1);
+                g2d.fillRect(
+                    prevFrame.leftOffset,
+                    prevFrame.topOffset,
+                    prevFrame.image.getWidth(),
+                    prevFrame.image.getHeight()
+                );
+            } finally {
+                g2d.dispose();
+            }
+        } else if (frameIndex > 0 && gif.frames.get(frameIndex - 1).disposeMethod == 3 && previousFrame != null) {
+            // Disposal method 3: Restore to previous frame
+            Graphics2D g2d = canvas.createGraphics();
+            try {
+                g2d.setComposite(AlphaComposite.Src);
+                g2d.drawImage(previousFrame, 0, 0, null);
+            } finally {
+                g2d.dispose();
+            }
+        }
+
+        // Save current canvas state if next frame needs it (disposal method 3)
+        BufferedImage updatedPreviousFrame = previousFrame;
+        if (frameIndex < gif.frames.size() - 1 && frame.disposeMethod == 3) {
+            updatedPreviousFrame = new BufferedImage(gif.width, gif.height, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g2d = updatedPreviousFrame.createGraphics();
+            try {
+                g2d.drawImage(canvas, 0, 0, null);
+            } finally {
+                g2d.dispose();
+            }
+        }
+
+        // Draw current frame onto canvas at its offset position
+        Graphics2D g2d = canvas.createGraphics();
+        try {
+            g2d.setComposite(AlphaComposite.SrcOver);
+            g2d.drawImage(frame.image, frame.leftOffset, frame.topOffset, null);
+        } finally {
+            g2d.dispose();
+        }
+
+        return updatedPreviousFrame;
     }
 
 }
