@@ -1,4 +1,4 @@
-name: CI - Test
+name: CI
 
 on:
   pull_request:
@@ -48,8 +48,7 @@ jobs:
     - name: Download all native libraries
       uses: actions/download-artifact@v4
       with:
-        pattern: webp4j-*
-        merge-multiple: true
+        name: webp4j-all-platforms
         path: src/main/resources/native
 
     - name: Display downloaded libraries
@@ -98,8 +97,7 @@ jobs:
     - name: Download all native libraries
       uses: actions/download-artifact@v4
       with:
-        pattern: webp4j-*
-        merge-multiple: true
+        name: webp4j-all-platforms
         path: src/main/resources/native
 
     - name: Display downloaded libraries
@@ -132,8 +130,7 @@ jobs:
     - name: Download all native libraries
       uses: actions/download-artifact@v4
       with:
-        pattern: webp4j-*
-        merge-multiple: true
+        name: webp4j-all-platforms
         path: src/main/resources/native
 
     - name: Setup QEMU
@@ -181,8 +178,7 @@ jobs:
     - name: Download all native libraries
       uses: actions/download-artifact@v4
       with:
-        pattern: webp4j-*
-        merge-multiple: true
+        name: webp4j-all-platforms
         path: src/main/resources/native
 
     - name: Setup QEMU

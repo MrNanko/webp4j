@@ -263,3 +263,54 @@ jobs:
         name: webp4j-linux-arm
         path: src/main/resources/native/libwebp4j-linux-arm.so
         retention-days: 7
+
+  # ============================================
+  # Collect all native libraries
+  # ============================================
+  collect-all-libraries:
+    name: Collect All Native Libraries
+    needs:
+      - build-windows
+      - build-macos
+      - build-linux-x64
+      - build-linux-arm64-native
+      - build-linux-arm64-qemu
+      - build-linux-arm32
+    runs-on: ubuntu-latest
+    if: always()  # Run even if some builds fail or are skipped
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        pattern: webp4j-*
+        path: native-libraries
+
+    - name: Display structure of downloaded files
+      run: ls -R native-libraries
+
+    - name: Organize files
+      run: |
+        mkdir -p collected
+        find native-libraries -type f \( -name "*.dll" -o -name "*.so" -o -name "*.dylib" \) -exec cp {} collected/ \;
+        ls -lh collected/
+
+    - name: Upload collected libraries
+      uses: actions/upload-artifact@v4
+      with:
+        name: webp4j-all-platforms
+        path: collected/
+        retention-days: 7
+
+    - name: Create checksum
+      run: |
+        cd collected
+        sha256sum * > SHA256SUMS
+        cat SHA256SUMS
+
+    - name: Upload checksum
+      uses: actions/upload-artifact@v4
+      with:
+        name: webp4j-checksums
+        path: collected/SHA256SUMS
+        retention-days: 7
