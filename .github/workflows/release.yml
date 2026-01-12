@@ -179,7 +179,12 @@ jobs:
         prerelease: false
         body: |
           ## WebP4j Release
-
+          
+          ### What's Changed
+          - **Build targets Java 8 bytecode** by setting `<maven.compiler.release>8</maven.compiler.release>`.
+          - **Critical fix:** GitHub Actions **macos-13** runner deprecation caused the **macOS x64 (Intel)** native library (`libwebp4j-mac-x64.dylib`) to be missing from the published JAR.
+              The CI has been updated to use **macos-15-intel** and `platform: mac-x64`, ensuring the dylib is built and bundled correctly.
+          
           ### Installation
 
           **Maven:**
