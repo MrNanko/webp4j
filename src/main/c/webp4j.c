@@ -44,6 +44,22 @@ void freeUint8(uint8_t* ptr) {
 }
 
 /*
+ * Class:     dev_matrixlab_webp4j_internal_NativeWebP
+ * Method:    getLibWebPVersion
+ * Signature: ()I
+ *
+ * Smoke test function that returns the libwebp version number.
+ * This verifies that:
+ * 1. The native library loaded successfully
+ * 2. JNI bindings are working correctly
+ * 3. libwebp functions are callable
+ */
+JNIEXPORT jint JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_getLibWebPVersion
+  (JNIEnv *env, jclass cls) {
+    return (jint) WebPGetEncoderVersion();
+}
+
+/*
  * Class:     NativeWebP
  * Method:    getInfo
  * Signature: ([B[I)Z

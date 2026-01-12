@@ -9,6 +9,14 @@ extern "C" {
 #endif
 /*
  * Class:     dev_matrixlab_webp4j_internal_NativeWebP
+ * Method:    getLibWebPVersion
+ * Signature: ()I
+ */
+JNIEXPORT jint JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_getLibWebPVersion
+  (JNIEnv *, jclass);
+
+/*
+ * Class:     dev_matrixlab_webp4j_internal_NativeWebP
  * Method:    getInfo
  * Signature: ([B[I)Z
  */
