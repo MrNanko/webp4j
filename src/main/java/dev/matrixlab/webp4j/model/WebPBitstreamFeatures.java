@@ -1,4 +1,4 @@
-package dev.matrixlab.webp4j;
+package dev.matrixlab.webp4j.model;
 
 /**
  * Represents WebP bitstream features.

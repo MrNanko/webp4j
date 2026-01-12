@@ -1,4 +1,8 @@
-package dev.matrixlab.webp4j;
+package dev.matrixlab.webp4j.internal;
+
+import dev.matrixlab.webp4j.exception.NativeLibraryNotFoundException;
+import dev.matrixlab.webp4j.model.AnimationInfo;
+import dev.matrixlab.webp4j.model.WebPBitstreamFeatures;
 
 public class NativeWebP {
 
@@ -127,7 +131,7 @@ public class NativeWebP {
             synchronized (NativeWebP.class) {
                 if (!nativeLibraryLoaded) {
                     try {
-                        NativeLibraryLoaderUtils.loadLibrary();
+                        NativeLibraryLoader.loadLibrary();
                         nativeLibraryLoaded = true;
                     } catch (Exception e) {
                         throw new NativeLibraryNotFoundException("Failed to load native library", e);

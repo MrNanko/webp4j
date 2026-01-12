@@ -1,4 +1,4 @@
-package dev.matrixlab.webp4j;
+package dev.matrixlab.webp4j.model;
 
 /**
  * Holds animation metadata extracted from GIF images.
@@ -19,10 +19,10 @@ public class AnimationInfo {
     private boolean hasTransparency;
 
     /**
-     * Package-private constructor.
-     * Instances are created by WebPCodec or native code.
+     * Public constructor.
+     * Instances can be created by any code including WebPCodec, native code, or external packages.
      */
-    AnimationInfo() {
+    public AnimationInfo() {
     }
 
     /**
@@ -35,10 +35,9 @@ public class AnimationInfo {
     }
 
     /**
-     * Package-private setter for frame count.
      * Called by WebPCodec or native code.
      */
-    void setFrameCount(int frameCount) {
+    public void setFrameCount(int frameCount) {
         this.frameCount = frameCount;
     }
 
@@ -52,10 +51,9 @@ public class AnimationInfo {
     }
 
     /**
-     * Package-private setter for width.
      * Called by WebPCodec or native code.
      */
-    void setWidth(int width) {
+    public void setWidth(int width) {
         this.width = width;
     }
 
@@ -69,10 +67,9 @@ public class AnimationInfo {
     }
 
     /**
-     * Package-private setter for height.
      * Called by WebPCodec or native code.
      */
-    void setHeight(int height) {
+    public void setHeight(int height) {
         this.height = height;
     }
 
@@ -86,10 +83,9 @@ public class AnimationInfo {
     }
 
     /**
-     * Package-private setter for loop count.
      * Called by WebPCodec or native code.
      */
-    void setLoopCount(int loopCount) {
+    public void setLoopCount(int loopCount) {
         this.loopCount = loopCount;
     }
 
@@ -103,10 +99,9 @@ public class AnimationInfo {
     }
 
     /**
-     * Package-private setter for transparency flag.
      * Called by WebPCodec or native code.
      */
-    void setHasTransparency(boolean hasTransparency) {
+    public void setHasTransparency(boolean hasTransparency) {
         this.hasTransparency = hasTransparency;
     }
 

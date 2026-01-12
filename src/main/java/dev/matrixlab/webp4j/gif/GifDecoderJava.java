@@ -1,5 +1,6 @@
-package dev.matrixlab.webp4j;
+package dev.matrixlab.webp4j.gif;
 
+import dev.matrixlab.webp4j.model.AnimationInfo;
 import org.w3c.dom.NamedNodeMap;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
@@ -21,7 +22,7 @@ import java.util.List;
  * This is used as a fallback when native giflib is unavailable,
  * or for testing purposes.
  */
-class GifDecoderJava {
+public final class GifDecoderJava {
 
     private static final String GRAPHIC_CONTROL_EXTENSION = "GraphicControlExtension";
 
@@ -32,23 +33,23 @@ class GifDecoderJava {
     /**
      * Represents a single frame in a GIF animation.
      */
-    static class GifFrame {
-        BufferedImage image;
-        int delayMs;
-        int disposeMethod;  // 0=NONE, 1=NONE, 2=BACKGROUND, 3=RESTORE_PREVIOUS
-        int leftOffset;
-        int topOffset;
+    public static class GifFrame {
+        public BufferedImage image;
+        public int delayMs;
+        public int disposeMethod;  // 0=NONE, 1=NONE, 2=BACKGROUND, 3=RESTORE_PREVIOUS
+        public int leftOffset;
+        public int topOffset;
     }
 
     /**
      * Holds all decoded GIF data including frames and metadata.
      */
-    static class GifData {
-        List<GifFrame> frames;
-        int loopCount;
-        int width;
-        int height;
-        boolean hasTransparency;
+    public static class GifData {
+        public List<GifFrame> frames;
+        public int loopCount;
+        public int width;
+        public int height;
+        public boolean hasTransparency;
     }
 
     /**
@@ -59,7 +60,7 @@ class GifDecoderJava {
      * @return GifData containing all frames and metadata
      * @throws IOException If decoding fails
      */
-    static GifData decodeGif(byte[] gifBytes) throws IOException {
+    public static GifData decodeGif(byte[] gifBytes) throws IOException {
         try (ImageInputStream stream = ImageIO.createImageInputStream(new ByteArrayInputStream(gifBytes))) {
             Iterator<ImageReader> readers = ImageIO.getImageReadersByFormatName("gif");
             if (!readers.hasNext()) {
@@ -332,7 +333,7 @@ class GifDecoderJava {
      * @param info AnimationInfo object to populate
      * @return true on success, false on failure
      */
-    static boolean getGifInfo(byte[] gifBytes, AnimationInfo info) {
+    public static boolean getGifInfo(byte[] gifBytes, AnimationInfo info) {
         try (ImageInputStream stream = ImageIO.createImageInputStream(new ByteArrayInputStream(gifBytes))) {
             Iterator<ImageReader> readers = ImageIO.getImageReadersByFormatName("gif");
             if (!readers.hasNext()) {

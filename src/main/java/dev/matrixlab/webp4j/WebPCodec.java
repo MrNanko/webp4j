@@ -1,5 +1,12 @@
 package dev.matrixlab.webp4j;
 
+import dev.matrixlab.webp4j.gif.GifDecoderJava;
+import dev.matrixlab.webp4j.gif.GifToWebPConfig;
+import dev.matrixlab.webp4j.internal.NativeWebP;
+import dev.matrixlab.webp4j.model.AnimationInfo;
+import dev.matrixlab.webp4j.model.VP8StatusCode;
+import dev.matrixlab.webp4j.model.WebPBitstreamFeatures;
+
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBuffer;

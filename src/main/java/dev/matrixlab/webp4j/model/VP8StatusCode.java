@@ -1,6 +1,6 @@
-package dev.matrixlab.webp4j;
+package dev.matrixlab.webp4j.model;
 
-enum VP8StatusCode {
+public enum VP8StatusCode {
     VP8_STATUS_OK,
     VP8_STATUS_OUT_OF_MEMORY,
     VP8_STATUS_INVALID_PARAM,

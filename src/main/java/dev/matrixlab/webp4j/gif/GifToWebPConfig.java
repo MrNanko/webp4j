@@ -1,4 +1,4 @@
-package dev.matrixlab.webp4j;
+package dev.matrixlab.webp4j.gif;
 
 /**
  * Configuration options for GIF to WebP conversion.

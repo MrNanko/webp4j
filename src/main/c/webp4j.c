@@ -4,7 +4,7 @@
 #include <webp/encode.h>
 #include <webp/decode.h>
 #include <webp/mux.h>
-#include "dev_matrixlab_webp4j_NativeWebP.h"
+#include "dev_matrixlab_webp4j_internal_NativeWebP.h"
 
 #ifdef HAVE_GIFLIB
 #include "gif_decoder.h"
@@ -66,7 +66,7 @@ void freeUint8(uint8_t* ptr) {
  * - true (JNI_TRUE) if the operation is successful.
  * - false (JNI_FALSE) if the operation fails.
  */
-JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_NativeWebP_getInfo
+JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_getInfo
   (JNIEnv *env, jclass clazz, jbyteArray data, jintArray dimensions) {
 
     // Convert Java byte array to native uint8_t array
@@ -139,7 +139,7 @@ JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_NativeWebP_getInfo
  * - VP8_STATUS_OK (0) if the operation is successful.
  * - A non-zero error code if the operation fails.
  */
-JNIEXPORT jint JNICALL Java_dev_matrixlab_webp4j_NativeWebP_getFeatures
+JNIEXPORT jint JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_getFeatures
   (JNIEnv *env, jclass clazz, jbyteArray data, jint dataSize, jobject featuresObj) {
 
     // Retrieve the pointer to the input byte array.
@@ -217,7 +217,7 @@ JNIEXPORT jint JNICALL Java_dev_matrixlab_webp4j_NativeWebP_getFeatures
  * Returns:
  * - A Java byte array containing the encoded WebP image, or NULL if encoding fails.
  */
-JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeRGB
+JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeRGB
   (JNIEnv *env, jclass clazz, jbyteArray image, jint width, jint height, jint stride, jfloat quality) {
 
     // Convert Java byte array to native uint8_t array
@@ -280,7 +280,7 @@ JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeRGB
  * Returns:
  * - A Java byte array containing the encoded WebP image, or NULL if encoding fails.
  */
-JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeRGBA
+JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeRGBA
   (JNIEnv *env, jclass clazz, jbyteArray image, jint width, jint height, jint stride, jfloat quality) {
 
     // Convert Java byte array to native uint8_t array
@@ -343,7 +343,7 @@ JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeRGBA
  * Returns:
  * - A Java byte array containing the encoded lossless WebP image, or NULL if encoding fails.
  */
-JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeLosslessRGB
+JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeLosslessRGB
   (JNIEnv *env, jclass clazz, jbyteArray image, jint width, jint height, jint stride) {
 
     // Convert Java byte array to native uint8_t array
@@ -406,7 +406,7 @@ JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeLossless
  * Returns:
  * - A Java byte array containing the encoded lossless WebP image, or NULL if encoding fails.
  */
-JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeLosslessRGBA
+JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeLosslessRGBA
   (JNIEnv *env, jclass clazz, jbyteArray image, jint width, jint height, jint stride) {
 
     // Convert Java byte array to native uint8_t array
@@ -470,7 +470,7 @@ JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeLossless
  * - true (JNI_TRUE) if decoding is successful.
  * - false (JNI_FALSE) if decoding fails.
  */
-JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_NativeWebP_decodeRGBInto
+JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_decodeRGBInto
   (JNIEnv *env, jclass clazz, jbyteArray data, jbyteArray outputBuffer, jint outputStride) {
 
     // Get data size
@@ -539,7 +539,7 @@ JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_NativeWebP_decodeRGBInto
  * - true (JNI_TRUE) if decoding is successful.
  * - false (JNI_FALSE) if decoding fails.
  */
-JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_NativeWebP_decodeRGBAInto
+JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_decodeRGBAInto
   (JNIEnv *env, jclass clazz, jbyteArray data, jbyteArray outputBuffer, jint outputStride) {
 
     // Get data size
@@ -602,7 +602,7 @@ JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_NativeWebP_decodeRGBAInto
  * Returns:
  * - True on success, false on failure (triggers Java fallback)
  */
-JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_NativeWebP_getGifInfo
+JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_getGifInfo
   (JNIEnv *env, jclass clazz, jbyteArray gifData, jobject info) {
 
 #ifdef HAVE_GIFLIB
@@ -678,7 +678,7 @@ JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_NativeWebP_getGifInfo
  * Returns:
  * - WebP encoded byte array, or NULL on failure (triggers Java fallback)
  */
-JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeGifToWebP
+JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeGifToWebP
   (JNIEnv *env, jclass clazz, jbyteArray gifData, jfloat quality,
    jboolean lossless, jint compressionMethod, jboolean extractFirstFrameOnly,
    jint loopCount, jint kmin, jint kmax, jboolean minimizeSize, jboolean allowMixed) {
@@ -908,7 +908,7 @@ JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeGifToWeb
  * Returns:
  * - A Java byte array containing the encoded animated WebP, or NULL if encoding fails.
  */
-JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_NativeWebP_encodeAnimatedWebP
+JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeAnimatedWebP
   (JNIEnv *env, jclass clazz, jobjectArray frames, jintArray delays, jint width, jint height,
    jfloat quality, jboolean lossless, jint compressionMethod, jint loopCount,
    jint kmin, jint kmax, jboolean minimizeSize, jboolean allowMixed) {
