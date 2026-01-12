@@ -4,15 +4,23 @@ on:
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
+    inputs:
+      rebuild_natives:
+        description: 'Rebuild native libraries'
+        required: false
+        type: boolean
+        default: true
 
 env:
   JAVA_VERSION: '21'
+  MAVEN_VERSION: '3.9.10'
 
 jobs:
   # ============================================
   # Build native libraries (reusable workflow)
   # ============================================
   build-natives:
+    if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.rebuild_natives)
     uses: ./.github/workflows/build-natives.yml
 
   # ============================================
@@ -20,6 +28,7 @@ jobs:
   # ============================================
   test:
     needs: build-natives
+    if: always() && !cancelled()
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -27,7 +36,7 @@ jobs:
         include:
           - os: windows-latest
             platform: windows
-          - os: macos-15
+          - os: macos-15-intel
             platform: mac-x64
           - os: macos-latest
             platform: mac-arm64
@@ -35,180 +44,229 @@ jobs:
             platform: linux
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: ${{ env.JAVA_VERSION }}
-        cache: 'maven'
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: 'maven'
 
-    - name: Download all native libraries
-      uses: actions/download-artifact@v4
-      with:
-        name: webp4j-all-platforms
-        path: src/main/resources/native
+      - name: Download all native libraries (from current run)
+        if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.rebuild_natives)
+        uses: actions/download-artifact@v4
+        with:
+          name: webp4j-all-platforms
+          path: src/main/resources/native
 
-    - name: Display downloaded libraries
-      run: ls -lh src/main/resources/native/
-      shell: bash
+      - name: Download all native libraries (from latest successful run)
+        if: github.event_name == 'workflow_dispatch' && !inputs.rebuild_natives
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: build-natives.yml
+          name: webp4j-all-platforms
+          path: src/main/resources/native
+          search_artifacts: true
 
-    - name: Run tests
-      run: mvn -B test
+      - name: Display downloaded libraries
+        run: ls -lh src/main/resources/native/
+        shell: bash
 
-    - name: Verify JAR contents
-      if: always()
-      run: |
-        echo "Checking if native libraries are included in JAR..."
-        jar tf target/webp4j-*.jar | grep "native/" || echo "No native libraries found in JAR"
-      shell: bash
+      - name: Run tests
+        run: mvn -B test
 
-    - name: Upload test results and output
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-results-${{ matrix.platform }}
-        path: |
-          target/surefire-reports/
-          target/test-output/
-        retention-days: 7
-
-  # ============================================
-  # Linux ARM64 Test - Native (Priority: Self-hosted)
-  # ============================================
-  test-arm64-native:
-    needs: build-natives
-    runs-on: self-hosted
-    timeout-minutes: 15
-    continue-on-error: true  # Allow fallback to QEMU if self-hosted not available
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: ${{ env.JAVA_VERSION }}
-        cache: 'maven'
-
-    - name: Download all native libraries
-      uses: actions/download-artifact@v4
-      with:
-        name: webp4j-all-platforms
-        path: src/main/resources/native
-
-    - name: Display downloaded libraries
-      run: ls -lh src/main/resources/native/
-
-    - name: Run tests (Native ARM64)
-      run: mvn -B test
-
-    - name: Upload test results and output
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-results-linux-arm64
-        path: |
-          target/surefire-reports/
-          target/test-output/
-        retention-days: 7
-
-  # ============================================
-  # Linux ARM64 Test - QEMU (Fallback)
-  # ============================================
-  test-arm64-qemu:
-    needs: test-arm64-native
-    runs-on: ubuntu-22.04
-    if: failure() || cancelled()  # Run only if native test fails or is cancelled
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Download all native libraries
-      uses: actions/download-artifact@v4
-      with:
-        name: webp4j-all-platforms
-        path: src/main/resources/native
-
-    - name: Setup QEMU
-      uses: docker/setup-qemu-action@v3
-      with:
-        platforms: arm64
-
-    - name: Run tests on ARM64 (QEMU)
-      uses: uraimo/run-on-arch-action@v2
-      with:
-        arch: aarch64
-        distro: ubuntu22.04
-        githubToken: ${{ github.token }}
-        dockerRunArgs: |
-          --volume "${PWD}:/workspace"
-        install: |
-          apt-get update -q -y
-          apt-get install -q -y maven openjdk-21-jdk
+      - name: Verify JAR contents
+        if: always()
         run: |
-          cd /workspace
-          export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-arm64
-          export PATH="${JAVA_HOME}/bin:${PATH}"
-          mvn -B test
+          echo "Checking if native libraries are included in JAR..."
+          jar tf target/webp4j-*.jar | grep "native/" || echo "No native libraries found in JAR"
+        shell: bash
 
-    - name: Upload test results and output
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-results-linux-arm64
-        path: |
-          target/surefire-reports/
-          target/test-output/
-        retention-days: 7
+      - name: Upload test results and output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.platform }}
+          path: |
+            target/surefire-reports/
+            target/test-output/
+          retention-days: 7
+
+  # ============================================
+  # Linux ARM64 Test (QEMU emulation)
+  # ============================================
+  test-linux-arm64-qemu:
+    needs: build-natives
+    if: always() && !cancelled()
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all native libraries (from current run)
+        if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.rebuild_natives)
+        uses: actions/download-artifact@v4
+        with:
+          name: webp4j-all-platforms
+          path: src/main/resources/native
+
+      - name: Download all native libraries (from latest successful run)
+        if: github.event_name == 'workflow_dispatch' && !inputs.rebuild_natives
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: build-natives.yml
+          name: webp4j-all-platforms
+          path: src/main/resources/native
+          search_artifacts: true
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Run tests on ARM64 (QEMU)
+        uses: uraimo/run-on-arch-action@v3
+        with:
+          arch: aarch64
+          distro: ubuntu22.04
+          githubToken: ${{ github.token }}
+          dockerRunArgs: |
+            --platform linux/arm64
+            --volume "${PWD}:/workspace"
+          install: |
+            set -eux
+            export DEBIAN_FRONTEND=noninteractive
+
+            apt-get update -q -y
+            apt-get install -q -y --no-install-recommends ca-certificates curl git openjdk-21-jdk
+
+            echo "Downloading Maven ${{ env.MAVEN_VERSION }} from Apache Archive..."
+            curl -fsSL --retry 5 --retry-delay 2 \
+              "https://archive.apache.org/dist/maven/maven-3/${{ env.MAVEN_VERSION }}/binaries/apache-maven-${{ env.MAVEN_VERSION }}-bin.tar.gz" \
+              -o /tmp/maven.tar.gz
+
+            echo "Downloaded $(du -h /tmp/maven.tar.gz | cut -f1)"
+
+            rm -rf /opt/apache-maven-${{ env.MAVEN_VERSION }}
+            tar -xzf /tmp/maven.tar.gz -C /opt
+
+            echo "Verifying Maven installation..."
+            test -d /opt/apache-maven-${{ env.MAVEN_VERSION }}/lib
+            test -d /opt/apache-maven-${{ env.MAVEN_VERSION }}/boot
+            test -f /opt/apache-maven-${{ env.MAVEN_VERSION }}/lib/maven-embedder-*.jar
+
+            rm -f /tmp/maven.tar.gz
+          run: |
+            set -eux
+            cd /workspace
+
+            export M2_HOME=/opt/apache-maven-${{ env.MAVEN_VERSION }}
+            export MAVEN_HOME="$M2_HOME"
+            export PATH="$M2_HOME/bin:$PATH"
+
+            echo "Java version:"
+            java -version
+            echo "mvn path:"
+            command -v mvn
+            ls -l "$(command -v mvn)"
+            echo "Maven version:"
+            mvn -v
+
+            echo "Running tests..."
+            mvn -B test
+
+      - name: Upload test results and output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-linux-arm64
+          path: |
+            target/surefire-reports/
+            target/test-output/
+          retention-days: 7
 
   # ============================================
   # Linux ARM32 Test (QEMU emulation)
   # ============================================
-  test-arm32:
+  test-linux-arm32-qemu:
     needs: build-natives
+    if: always() && !cancelled()
     runs-on: ubuntu-22.04
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Download all native libraries
-      uses: actions/download-artifact@v4
-      with:
-        name: webp4j-all-platforms
-        path: src/main/resources/native
+      - name: Download all native libraries (from current run)
+        if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.rebuild_natives)
+        uses: actions/download-artifact@v4
+        with:
+          name: webp4j-all-platforms
+          path: src/main/resources/native
 
-    - name: Setup QEMU
-      uses: docker/setup-qemu-action@v3
-      with:
-        platforms: arm
+      - name: Download all native libraries (from latest successful run)
+        if: github.event_name == 'workflow_dispatch' && !inputs.rebuild_natives
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: build-natives.yml
+          name: webp4j-all-platforms
+          path: src/main/resources/native
+          search_artifacts: true
 
-    - name: Run tests on ARM32 (QEMU)
-      uses: uraimo/run-on-arch-action@v2
-      with:
-        arch: armv7
-        distro: ubuntu22.04
-        githubToken: ${{ github.token }}
-        dockerRunArgs: |
-          --volume "${PWD}:/workspace"
-        install: |
-          apt-get update -q -y
-          apt-get install -q -y maven openjdk-21-jdk
-        run: |
-          cd /workspace
-          export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-armhf
-          export PATH="${JAVA_HOME}/bin:${PATH}"
-          mvn -B test
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm
 
-    - name: Upload test results and output
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-results-linux-arm32
-        path: |
-          target/surefire-reports/
-          target/test-output/
-        retention-days: 7
+      - name: Run tests on ARM32 (QEMU)
+        uses: uraimo/run-on-arch-action@v3
+        with:
+          arch: armv7
+          distro: ubuntu22.04
+          githubToken: ${{ github.token }}
+          dockerRunArgs: |
+            --platform linux/arm/v7
+            --volume "${PWD}:/workspace"
+          install: |
+            set -eux
+            export DEBIAN_FRONTEND=noninteractive
+
+            apt-get update -q -y
+            apt-get install -q -y --no-install-recommends ca-certificates curl git openjdk-21-jdk
+
+            echo "Downloading Maven ${{ env.MAVEN_VERSION }} from Apache Archive..."
+            curl -fsSL --retry 5 --retry-delay 2 \
+              "https://archive.apache.org/dist/maven/maven-3/${{ env.MAVEN_VERSION }}/binaries/apache-maven-${{ env.MAVEN_VERSION }}-bin.tar.gz" \
+              -o /tmp/maven.tar.gz
+
+            echo "Downloaded $(du -h /tmp/maven.tar.gz | cut -f1)"
+
+            rm -rf /opt/apache-maven-${{ env.MAVEN_VERSION }}
+            tar -xzf /tmp/maven.tar.gz -C /opt
+
+            echo "Verifying Maven installation..."
+            test -d /opt/apache-maven-${{ env.MAVEN_VERSION }}/lib
+            test -d /opt/apache-maven-${{ env.MAVEN_VERSION }}/boot
+            test -f /opt/apache-maven-${{ env.MAVEN_VERSION }}/lib/maven-embedder-*.jar
+
+            rm -f /tmp/maven.tar.gz
+          run: |
+            set -eux
+            cd /workspace
+
+            echo "Java version:"
+            java -version
+
+            echo "Running tests..."
+            /opt/apache-maven-${{ env.MAVEN_VERSION }}/bin/mvn -B test
+
+      - name: Upload test results and output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-linux-arm32
+          path: |
+            target/surefire-reports/
+            target/test-output/
+          retention-days: 7
