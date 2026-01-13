@@ -63,6 +63,23 @@ class WebP4jTest {
     }
 
     @Test
+    void testIsAvailable() {
+        // Verify that WebP native library is available on this platform
+        boolean available = WebPCodec.isAvailable();
+
+        // In test environment, native library should be loaded successfully
+        assertTrue(available, () -> {
+            Throwable cause = NativeWebP.unavailabilityCause();
+            return "WebP should be available on this platform during testing. " +
+                   "Unavailability cause: " + (cause != null ? cause.getMessage() : "none");
+        });
+
+        // Verify that unavailabilityCause is null when library is available
+        assertNull(NativeWebP.unavailabilityCause(),
+            "unavailabilityCause() should return null when library loaded successfully");
+    }
+
+    @Test
     void testGetWebPInfo() {
         try {
             // Load WebP image file

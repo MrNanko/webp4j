@@ -23,6 +23,30 @@ public final class WebPCodec {
     }
 
     /**
+     * Checks if WebP support is available on the current platform.
+     * <p>
+     * This method verifies that the native WebP library has been successfully
+     * loaded for the current operating system and architecture. It provides
+     * a lightweight way to check platform support without attempting to
+     * encode or decode an image.
+     * <p>
+     * Example usage:
+     * <pre>
+     * if (WebPCodec.isAvailable()) {
+     *     // Show WebP export option in UI
+     *     byte[] webpData = WebPCodec.encodeImage(image, 75);
+     * } else {
+     *     // Hide WebP option or show unsupported message
+     * }
+     * </pre>
+     *
+     * @return true if WebP operations are supported on this platform, false otherwise
+     */
+    public static boolean isAvailable() {
+        return NativeWebP.isAvailable();
+    }
+
+    /**
      * Retrieves information about a WebP image.
      *
      * @param webPData Byte array containing WebP image data
