@@ -4,6 +4,7 @@ import dev.matrixlab.webp4j.gif.GifDecoderJava;
 import dev.matrixlab.webp4j.gif.GifToWebPConfig;
 import dev.matrixlab.webp4j.internal.NativeWebP;
 import dev.matrixlab.webp4j.model.AnimationInfo;
+import dev.matrixlab.webp4j.model.FitMode;
 import dev.matrixlab.webp4j.model.VP8StatusCode;
 import dev.matrixlab.webp4j.model.WebPBitstreamFeatures;
 
@@ -13,7 +14,9 @@ import java.awt.image.DataBuffer;
 import java.awt.image.DataBufferByte;
 import java.awt.image.DataBufferInt;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.function.Supplier;
 
 public final class WebPCodec {
@@ -612,6 +615,92 @@ public final class WebPCodec {
     }
 
     /**
+     * Creates an animated WebP from a list of BufferedImage frames.
+     * <p>
+     * This method provides direct conversion from Java BufferedImage objects
+     * to animated WebP without requiring an intermediate GIF file.
+     * <p>
+     * Example usage:
+     * <pre>{@code
+     * List<BufferedImage> frames = Arrays.asList(frame1, frame2, frame3);
+     * int[] delays = {100, 100, 100};  // milliseconds per frame
+     * GifToWebPConfig config = GifToWebPConfig.createLosslessConfig();
+     * byte[] webp = WebPCodec.createAnimatedWebP(frames, delays, config);
+     * }</pre>
+     *
+     * @param frames List of BufferedImage frames (must not be empty)
+     * @param delays Array of frame delays in milliseconds (must match frame count)
+     * @param config Configuration for encoding (quality, compression, etc.)
+     * @return Byte array containing the animated WebP data
+     * @throws IOException If encoding fails
+     * @throws IllegalArgumentException If frames is empty or delays length doesn't match
+     */
+    public static byte[] createAnimatedWebP(List<BufferedImage> frames, int[] delays, GifToWebPConfig config) throws IOException {
+        if (frames == null || frames.isEmpty()) {
+            throw new IllegalArgumentException("Frames list cannot be null or empty");
+        }
+        if (delays == null || delays.length != frames.size()) {
+            throw new IllegalArgumentException("Delays array length must match frame count");
+        }
+        if (config == null) {
+            config = new GifToWebPConfig();
+        }
+
+        // Get canvas dimensions from first frame
+        BufferedImage firstFrame = frames.get(0);
+        int width = firstFrame.getWidth();
+        int height = firstFrame.getHeight();
+
+        // Convert all BufferedImage frames to RGBA byte arrays
+        byte[][] frameData = new byte[frames.size()][];
+
+        try {
+            for (int i = 0; i < frames.size(); i++) {
+                BufferedImage frame = frames.get(i);
+
+                // Validate frame dimensions match canvas
+                if (frame.getWidth() != width || frame.getHeight() != height) {
+                    throw new IllegalArgumentException(
+                        String.format("Frame %d dimensions (%dx%d) don't match canvas (%dx%d)",
+                            i, frame.getWidth(), frame.getHeight(), width, height));
+                }
+
+                frameData[i] = convertBufferedImageToBytes(frame);
+            }
+
+            // Encode using native WebPAnimEncoder
+            byte[] result = NativeWebP.encodeAnimatedWebP(
+                    frameData,
+                    delays,
+                    width,
+                    height,
+                    config.getQuality(),
+                    config.isLossless(),
+                    config.getCompressionMethod(),
+                    config.getLoopCount() == -1 ? 0 : config.getLoopCount(),  // Default to infinite loop
+                    config.getKmin(),
+                    config.getKmax(),
+                    config.isMinimizeSize(),
+                    config.isAllowMixed()
+            );
+
+            if (result == null || result.length == 0) {
+                throw new IOException("Animated WebP encoding failed");
+            }
+
+            return result;
+
+        } finally {
+            // Clear frame data arrays to free memory
+            for (byte[] frame : frameData) {
+                if (frame != null) {
+                    Arrays.fill(frame, (byte) 0);
+                }
+            }
+        }
+    }
+
+    /**
      * Fallback implementation: Encodes GIF to WebP using Java ImageIO for GIF decoding.
      * <p>
      * This method is used when native giflib is unavailable. It decodes the GIF
@@ -754,6 +843,146 @@ public final class WebPCodec {
         }
 
         return updatedPreviousFrame;
+    }
+
+    /**
+     * Normalizes a list of frames for animation using default strategy.
+     * - Target size: min width/height among frames (avoids upscaling)
+     * - Fit: CONTAIN (preserve aspect, letterbox center)
+     * - Background: transparent
+     *
+     * @param frames Source frames (must be non-empty)
+     * @return New list of TYPE_INT_ARGB frames of identical size
+     * @throws IllegalArgumentException if frames is null/empty or contains invalid images
+     */
+    public static List<BufferedImage> normalizeFramesForAnimation(List<BufferedImage> frames) {
+        return normalizeFramesForAnimation(frames, null, null, FitMode.CONTAIN, false, new Color(0, 0, 0, 0));
+    }
+
+    /**
+     * Normalizes frames to a common canvas with configurable strategy.
+     * Returns new TYPE_INT_ARGB frames with identical dimensions.
+     *
+     * @param frames Source frames (must be non-empty)
+     * @param targetWidth Target canvas width (nullable: use min width across frames)
+     * @param targetHeight Target canvas height (nullable: use min height across frames)
+     * @param fitMode How to fit frames onto canvas (CONTAIN/COVER/STRETCH)
+     * @param allowUpscale Whether to allow upscaling smaller images
+     * @param background Background color to fill (use transparent for alpha)
+     * @return List of normalized frames (new BufferedImage instances)
+     */
+    public static List<BufferedImage> normalizeFramesForAnimation(
+            List<BufferedImage> frames,
+            Integer targetWidth,
+            Integer targetHeight,
+            FitMode fitMode,
+            boolean allowUpscale,
+            Color background
+    ) {
+        if (frames == null || frames.isEmpty()) {
+            throw new IllegalArgumentException("Frames list cannot be null or empty");
+        }
+        if (fitMode == null) fitMode = FitMode.CONTAIN;
+        if (background == null) background = new Color(0, 0, 0, 0);
+
+        // Calculate min dimensions if target size not specified
+        int minW = Integer.MAX_VALUE;
+        int minH = Integer.MAX_VALUE;
+        boolean needMinDimensions = (targetWidth == null || targetWidth <= 0)
+                || (targetHeight == null || targetHeight <= 0);
+
+        for (BufferedImage img : frames) {
+            if (img == null) throw new IllegalArgumentException("Frame image cannot be null");
+            if (needMinDimensions) {
+                minW = Math.min(minW, img.getWidth());
+                minH = Math.min(minH, img.getHeight());
+            }
+        }
+
+        int canvasW = (targetWidth != null && targetWidth > 0) ? targetWidth : minW;
+        int canvasH = (targetHeight != null && targetHeight > 0) ? targetHeight : minH;
+        if (canvasW <= 0 || canvasH <= 0) {
+            throw new IllegalArgumentException("Invalid target canvas size");
+        }
+
+        ArrayList<BufferedImage> out = new ArrayList<>(frames.size());
+
+        for (BufferedImage src : frames) {
+            int sw = src.getWidth();
+            int sh = src.getHeight();
+
+            // Fast path: direct copy when no transformation needed
+            if (sw == canvasW && sh == canvasH && fitMode != FitMode.COVER) {
+                BufferedImage copy = new BufferedImage(canvasW, canvasH, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D g2d = copy.createGraphics();
+                try {
+                    g2d.drawImage(src, 0, 0, null);
+                } finally {
+                    g2d.dispose();
+                }
+                out.add(copy);
+                continue;
+            }
+
+            BufferedImage canvas = new BufferedImage(canvasW, canvasH, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g2d = canvas.createGraphics();
+            try {
+                // Fill background
+                g2d.setComposite(AlphaComposite.Src);
+                g2d.setColor(background);
+                g2d.fillRect(0, 0, canvasW, canvasH);
+
+                // Set high-quality rendering hints
+                g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+                g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+                g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+                int dw, dh, dx, dy;
+                switch (fitMode) {
+                    case COVER: {
+                        double scale = Math.max((double) canvasW / sw, (double) canvasH / sh);
+                        if (!allowUpscale) scale = Math.min(1.0, scale);
+                        dw = Math.max(1, (int) Math.round(sw * scale));
+                        dh = Math.max(1, (int) Math.round(sh * scale));
+                        dx = (canvasW - dw) / 2;
+                        dy = (canvasH - dh) / 2;
+                        break;
+                    }
+                    case STRETCH: {
+                        if (allowUpscale) {
+                            dw = canvasW;
+                            dh = canvasH;
+                            dx = 0;
+                            dy = 0;
+                        } else {
+                            dw = Math.min(canvasW, sw);
+                            dh = Math.min(canvasH, sh);
+                            dx = (canvasW - dw) / 2;
+                            dy = (canvasH - dh) / 2;
+                        }
+                        break;
+                    }
+                    case CONTAIN:
+                    default: {
+                        double scale = Math.min((double) canvasW / sw, (double) canvasH / sh);
+                        if (!allowUpscale) scale = Math.min(1.0, scale);
+                        dw = Math.max(1, (int) Math.round(sw * scale));
+                        dh = Math.max(1, (int) Math.round(sh * scale));
+                        dx = (canvasW - dw) / 2;
+                        dy = (canvasH - dh) / 2;
+                        break;
+                    }
+                }
+
+                g2d.drawImage(src, dx, dy, dw, dh, null);
+            } finally {
+                g2d.dispose();
+            }
+
+            out.add(canvas);
+        }
+
+        return out;
     }
 
 }
