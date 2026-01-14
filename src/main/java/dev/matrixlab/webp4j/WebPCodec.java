@@ -1,29 +1,41 @@
 package dev.matrixlab.webp4j;
 
-import dev.matrixlab.webp4j.gif.GifDecoderJava;
+import dev.matrixlab.webp4j.animation.AnimatedWebPEncoder;
 import dev.matrixlab.webp4j.gif.GifToWebPConfig;
+import dev.matrixlab.webp4j.gif.GifToWebPConverter;
 import dev.matrixlab.webp4j.internal.NativeWebP;
+import dev.matrixlab.webp4j.internal.PixelConverter;
 import dev.matrixlab.webp4j.model.AnimationInfo;
-import dev.matrixlab.webp4j.model.FitMode;
 import dev.matrixlab.webp4j.model.VP8StatusCode;
 import dev.matrixlab.webp4j.model.WebPBitstreamFeatures;
 
-import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.awt.image.DataBuffer;
-import java.awt.image.DataBufferByte;
-import java.awt.image.DataBufferInt;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Supplier;
 
+/**
+ * Main facade class for WebP encoding and decoding operations.
+ * <p>
+ * This class provides a unified API for all WebP-related operations including:
+ * <ul>
+ *   <li>Static image encoding/decoding</li>
+ *   <li>GIF to WebP conversion</li>
+ *   <li>Animated WebP creation</li>
+ * </ul>
+ *
+ * @author MrNanko
+ * @since 1.4.0
+ */
 public final class WebPCodec {
 
     private WebPCodec() {
         throw new AssertionError("Cannot instantiate utility class.");
     }
+
+    // ============================================
+    // Platform Availability
+    // ============================================
 
     /**
      * Checks if WebP support is available on the current platform.
@@ -48,6 +60,10 @@ public final class WebPCodec {
     public static boolean isAvailable() {
         return NativeWebP.isAvailable();
     }
+
+    // ============================================
+    // Static Image Encoding/Decoding
+    // ============================================
 
     /**
      * Retrieves information about a WebP image.
@@ -74,7 +90,8 @@ public final class WebPCodec {
      * @param quality       The WebP quality parameter (0-100). Ignored when lossless is true.
      * @param lossless      True for lossless encoding, false for lossy encoding.
      * @return A byte array containing the WebP encoded data.
-     * @throws IOException If an error occurs during image conversion or encoding.
+     * @throws IOException              If an error occurs during image conversion or encoding.
+     * @throws IllegalArgumentException If bufferedImage is null.
      */
     public static byte[] encodeImage(BufferedImage bufferedImage, float quality, boolean lossless) throws IOException {
         if (bufferedImage == null) {
@@ -86,7 +103,7 @@ public final class WebPCodec {
         int height = bufferedImage.getHeight();
 
         // Convert the BufferedImage to an RGB/RGBA byte array.
-        byte[] imageBytes = WebPCodec.convertBufferedImageToBytes(bufferedImage);
+        byte[] imageBytes = PixelConverter.toBytes(bufferedImage);
         if (imageBytes.length == 0) {
             throw new IOException("Failed to convert BufferedImage to a byte array.");
         }
@@ -122,7 +139,8 @@ public final class WebPCodec {
      * @param bufferedImage The input BufferedImage in RGB/RGBA format.
      * @param quality       The WebP quality parameter (0-100).
      * @return A byte array containing the lossy WebP encoded data.
-     * @throws IOException If an error occurs during image conversion or encoding.
+     * @throws IOException              If an error occurs during image conversion or encoding.
+     * @throws IllegalArgumentException If bufferedImage is null.
      */
     public static byte[] encodeImage(BufferedImage bufferedImage, float quality) throws IOException {
         return encodeImage(bufferedImage, quality, false);
@@ -134,7 +152,8 @@ public final class WebPCodec {
      *
      * @param bufferedImage The input BufferedImage in RGB/RGBA format.
      * @return A byte array containing the lossless WebP encoded data.
-     * @throws IOException If an error occurs during image conversion or encoding.
+     * @throws IOException              If an error occurs during image conversion or encoding.
+     * @throws IllegalArgumentException If bufferedImage is null.
      */
     public static byte[] encodeLosslessImage(BufferedImage bufferedImage) throws IOException {
         return encodeImage(bufferedImage, 0, true);
@@ -145,7 +164,8 @@ public final class WebPCodec {
      *
      * @param webPData The byte array containing the WebP encoded image.
      * @return A BufferedImage representing the decoded RGB/RGBA image.
-     * @throws IOException If an error occurs during retrieval of image info or decoding.
+     * @throws IOException              If an error occurs during retrieval of image info or decoding.
+     * @throws IllegalArgumentException If webPData is null or empty.
      */
     public static BufferedImage decodeImage(byte[] webPData) throws IOException {
         if (webPData == null || webPData.length == 0) {
@@ -153,7 +173,7 @@ public final class WebPCodec {
         }
 
         // Retrieve image dimensions from the WebP data.
-        int[] dimensions = WebPCodec.getWebPInfo(webPData);
+        int[] dimensions = getWebPInfo(webPData);
 
         int width = dimensions[0];
         int height = dimensions[1];
@@ -184,7 +204,7 @@ public final class WebPCodec {
             }
 
             // Convert the decoded RGB/RGBA byte array into a BufferedImage.
-            return WebPCodec.convertBytesToBufferedImage(width, height, outputBuffer);
+            return PixelConverter.toBufferedImage(width, height, outputBuffer);
         } finally {
             // Clear the contents of the outputBuffer to remove sensitive data.
             Arrays.fill(outputBuffer, (byte) 0);
@@ -216,276 +236,8 @@ public final class WebPCodec {
         }
     }
 
-    /**
-     * Creates a BufferedImage from a byte array containing pixel data.
-     * <p>
-     * This method supports both RGB (3 bytes per pixel) and ARGB (4 bytes per pixel) formats.
-     * It determines the format based on the length of the input byte array and the image dimensions.
-     *
-     * @param width        The width of the image.
-     * @param height       The height of the image.
-     * @param outputBuffer A byte array containing the pixel data.
-     *                     - For RGB format: Each pixel is represented by 3 consecutive bytes (R, G, B).
-     *                     - For ARGB format: Each pixel is represented by 4 consecutive bytes (R, G, B, A).
-     * @return A BufferedImage object representing the image with the specified width, height, and pixel data.
-     * - If the input buffer is RGB, the image will be of type BufferedImage.TYPE_INT_RGB.
-     * - If the input buffer is ARGB, the image will be of type BufferedImage.TYPE_INT_ARGB.
-     * @throws IllegalArgumentException if the length of the outputBuffer does not match the expected size
-     *                                  for the given width, height, and pixel format.
-     */
-    private static BufferedImage convertBytesToBufferedImage(int width, int height, byte[] outputBuffer) {
-        // Determine if the input buffer is RGB (3 bytes per pixel) or ARGB (4 bytes per pixel)
-        boolean hasAlpha = outputBuffer.length == width * height * 4;
-        int imageType = hasAlpha ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB;
-
-        // Use DataBufferInt backend to set pixels directly, avoiding setRGB calls for each pixel
-        BufferedImage image = new BufferedImage(width, height, imageType);
-        int[] pixels = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
-
-        int index = 0;
-        int pixelIndex = 0;
-
-        // Process entire rows at once to improve cache utilization
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int r = outputBuffer[index++] & 0xFF;
-                int g = outputBuffer[index++] & 0xFF;
-                int b = outputBuffer[index++] & 0xFF;
-                int a = hasAlpha ? (outputBuffer[index++] & 0xFF) : 255;
-
-                // Set values directly in the pixel array
-                pixels[pixelIndex++] = (a << 24) | (r << 16) | (g << 8) | b;
-            }
-        }
-
-        return image;
-    }
-
-    /**
-     * Extracts pixel data from a BufferedImage into a byte array.
-     * <p>
-     * This method automatically detects the image's color type, channel order, and alpha presence,
-     * then extracts pixel data accordingly.
-     *
-     * @param image The BufferedImage to extract pixel data from.
-     * @return A byte array containing the pixel data in the appropriate color format.
-     */
-    private static byte[] convertBufferedImageToBytes(BufferedImage image) {
-        // Check if the image has an Alpha channel
-        boolean hasAlpha = image.getColorModel().hasAlpha();
-
-        int width = image.getWidth();
-        int height = image.getHeight();
-        int bytesPerPixel = hasAlpha ? 4 : 3;
-
-        // Allocate only the necessary output buffer
-        byte[] output = new byte[width * height * bytesPerPixel];
-        int imageType = image.getType();
-
-        try {
-            // Handle different types of BufferedImage
-            switch (imageType) {
-                // INT-based types with direct buffer access
-                case BufferedImage.TYPE_INT_RGB:
-                case BufferedImage.TYPE_INT_ARGB:
-                case BufferedImage.TYPE_INT_ARGB_PRE: {
-                    // Get direct reference without creating a copy
-                    DataBuffer dataBuffer = image.getRaster().getDataBuffer();
-                    if (dataBuffer instanceof DataBufferInt) {
-                        DataBufferInt dataBufferInt = (DataBufferInt) dataBuffer;
-                        int[] intPixels = dataBufferInt.getData();
-                        int index = 0;
-                        boolean isPremultiplied = (imageType == BufferedImage.TYPE_INT_ARGB_PRE);
-
-                        // Use direct array access for maximum speed
-                        if (hasAlpha) {
-                            for (int pixel : intPixels) {
-                                int a = (pixel >> 24) & 0xFF;
-                                int r = (pixel >> 16) & 0xFF;
-                                int g = (pixel >> 8) & 0xFF;
-                                int b = pixel & 0xFF;
-
-                                // Unpremultiply alpha if needed to avoid dark/black edges
-                                if (isPremultiplied && a > 0 && a < 255) {
-                                    r = (r * 255 + (a >> 1)) / a;
-                                    g = (g * 255 + (a >> 1)) / a;
-                                    b = (b * 255 + (a >> 1)) / a;
-                                    // Clamp values to [0, 255]
-                                    r = Math.min(255, r);
-                                    g = Math.min(255, g);
-                                    b = Math.min(255, b);
-                                }
-
-                                output[index++] = (byte) r; // Red
-                                output[index++] = (byte) g; // Green
-                                output[index++] = (byte) b; // Blue
-                                output[index++] = (byte) a; // Alpha
-                            }
-                        } else {
-                            for (int pixel : intPixels) {
-                                output[index++] = (byte) ((pixel >> 16) & 0xFF); // Red
-                                output[index++] = (byte) ((pixel >> 8) & 0xFF);  // Green
-                                output[index++] = (byte) (pixel & 0xFF);         // Blue
-                            }
-                        }
-                    } else {
-                        processImageByRows(image, output, width, height, hasAlpha);
-                    }
-                    break;
-                }
-
-                // INT-based BGR type with direct buffer access
-                case BufferedImage.TYPE_INT_BGR: {
-                    DataBuffer dataBuffer = image.getRaster().getDataBuffer();
-                    if (dataBuffer instanceof DataBufferInt) {
-                        DataBufferInt dataBufferInt = (DataBufferInt) dataBuffer;
-                        int[] bgrIntPixels = dataBufferInt.getData();
-                        int index = 0;
-                        for (int pixel : bgrIntPixels) {
-                            output[index++] = (byte) ((pixel) & 0xFF);       // Red (BGR order)
-                            output[index++] = (byte) ((pixel >> 8) & 0xFF);  // Green
-                            output[index++] = (byte) ((pixel >> 16) & 0xFF); // Blue (BGR order)
-                            if (hasAlpha) {
-                                output[index++] = (byte) ((pixel >> 24) & 0xFF); // Alpha
-                            }
-                        }
-                    } else {
-                        processImageByRows(image, output, width, height, hasAlpha);
-                    }
-                    break;
-                }
-
-                // BYTE-based types with direct buffer access
-                case BufferedImage.TYPE_3BYTE_BGR: {
-                    DataBuffer dataBuffer = image.getRaster().getDataBuffer();
-                    if (dataBuffer instanceof DataBufferByte) {
-                        DataBufferByte dataBufferByte = (DataBufferByte) dataBuffer;
-                        byte[] bgrBytes = dataBufferByte.getData();
-                        int index = 0;
-                        // Unroll the loop for better performance
-                        int maxIndex = bgrBytes.length - 2;  // Safe limit for unrolled loop
-                        int i = 0;
-
-                        // Process 3 pixels (9 bytes) at a time
-                        for (; i < maxIndex - 8; i += 9) {
-                            // Pixel 1
-                            output[index++] = bgrBytes[i + 2];
-                            output[index++] = bgrBytes[i + 1];
-                            output[index++] = bgrBytes[i];
-
-                            // Pixel 2
-                            output[index++] = bgrBytes[i + 5];
-                            output[index++] = bgrBytes[i + 4];
-                            output[index++] = bgrBytes[i + 3];
-
-                            // Pixel 3
-                            output[index++] = bgrBytes[i + 8];
-                            output[index++] = bgrBytes[i + 7];
-                            output[index++] = bgrBytes[i + 6];
-                        }
-
-                        // Handle remaining pixels
-                        for (; i < bgrBytes.length; i += 3) {
-                            output[index++] = bgrBytes[i + 2];  // Red (BGR → RGB)
-                            output[index++] = bgrBytes[i + 1];  // Green
-                            output[index++] = bgrBytes[i];      // Blue (BGR → RGB)
-                        }
-                    } else {
-                        processImageByRows(image, output, width, height, hasAlpha);
-                    }
-                    break;
-                }
-
-                case BufferedImage.TYPE_4BYTE_ABGR:
-                case BufferedImage.TYPE_4BYTE_ABGR_PRE: {
-                    DataBuffer dataBuffer = image.getRaster().getDataBuffer();
-                    if (dataBuffer instanceof DataBufferByte) {
-                        DataBufferByte dataBufferByte = (DataBufferByte) dataBuffer;
-                        byte[] abgrBytes = dataBufferByte.getData();
-                        int index = 0;
-                        boolean isPremultiplied = (imageType == BufferedImage.TYPE_4BYTE_ABGR_PRE);
-
-                        if (hasAlpha) {
-                            // Process all pixels with unpremultiply support
-                            for (int i = 0; i < abgrBytes.length; i += 4) {
-                                int a = abgrBytes[i] & 0xFF;      // Alpha
-                                int b = abgrBytes[i + 1] & 0xFF;  // Blue
-                                int g = abgrBytes[i + 2] & 0xFF;  // Green
-                                int r = abgrBytes[i + 3] & 0xFF;  // Red
-
-                                // Unpremultiply alpha if needed to avoid dark/black edges
-                                if (isPremultiplied && a > 0 && a < 255) {
-                                    r = (r * 255 + (a >> 1)) / a;
-                                    g = (g * 255 + (a >> 1)) / a;
-                                    b = (b * 255 + (a >> 1)) / a;
-                                    // Clamp values to [0, 255]
-                                    r = Math.min(255, r);
-                                    g = Math.min(255, g);
-                                    b = Math.min(255, b);
-                                }
-
-                                output[index++] = (byte) r;  // Red
-                                output[index++] = (byte) g;  // Green
-                                output[index++] = (byte) b;  // Blue
-                                output[index++] = (byte) a;  // Alpha
-                            }
-                        } else {
-                            // When hasAlpha is false but image has 4 bytes per pixel
-                            for (int i = 0; i < abgrBytes.length; i += 4) {
-                                output[index++] = abgrBytes[i + 3];  // Red
-                                output[index++] = abgrBytes[i + 2];  // Green
-                                output[index++] = abgrBytes[i + 1];  // Blue
-                            }
-                        }
-                    } else {
-                        processImageByRows(image, output, width, height, hasAlpha);
-                    }
-                    break;
-                }
-
-                // Default case for all other types
-                default:
-                    processImageByRows(image, output, width, height, hasAlpha);
-                    break;
-            }
-        } catch (Exception e) {
-            // Fallback if any error occurs during optimized processing
-            processImageByRows(image, output, width, height, hasAlpha);
-        }
-
-        return output;
-    }
-
-    private static void processImageByRows(BufferedImage image, byte[] output, int width, int height, boolean hasAlpha) {
-        // More efficient row-by-row processing
-        int[] rowBuffer = new int[width];
-        int index = 0;
-
-        for (int y = 0; y < height; y++) {
-            // Get the entire row at once
-            image.getRGB(0, y, width, 1, rowBuffer, 0, width);
-
-            if (hasAlpha) {
-                for (int x = 0; x < width; x++) {
-                    int argb = rowBuffer[x];
-                    output[index++] = (byte) ((argb >> 16) & 0xFF); // Red
-                    output[index++] = (byte) ((argb >> 8) & 0xFF);  // Green
-                    output[index++] = (byte) (argb & 0xFF);         // Blue
-                    output[index++] = (byte) ((argb >> 24) & 0xFF); // Alpha
-                }
-            } else {
-                for (int x = 0; x < width; x++) {
-                    int argb = rowBuffer[x];
-                    output[index++] = (byte) ((argb >> 16) & 0xFF); // Red
-                    output[index++] = (byte) ((argb >> 8) & 0xFF);  // Green
-                    output[index++] = (byte) (argb & 0xFF);         // Blue
-                }
-            }
-        }
-    }
-
     // ============================================
-    // GIF to WebP Conversion Methods
+    // GIF to WebP Conversion (Delegate to GifToWebPConverter)
     // ============================================
 
     /**
@@ -496,33 +248,11 @@ public final class WebPCodec {
      *
      * @param gifData Byte array containing the GIF image data
      * @return AnimationInfo containing frame count, dimensions, loop count, and transparency info
-     * @throws IOException If reading GIF information fails
+     * @throws IOException              If reading GIF information fails
      * @throws IllegalArgumentException If gifData is null or empty
      */
     public static AnimationInfo getGifInfo(byte[] gifData) throws IOException {
-        if (gifData == null || gifData.length == 0) {
-            throw new IllegalArgumentException("GIF data cannot be null or empty");
-        }
-
-        AnimationInfo info = new AnimationInfo();
-
-        // Try native path first
-        try {
-            boolean success = NativeWebP.getGifInfo(gifData, info);
-            if (success) {
-                return info;
-            }
-        } catch (UnsatisfiedLinkError e) {
-            // Native library not available, fall back to Java ImageIO
-        }
-
-        // If native path returned false or library unavailable, use Java ImageIO fallback
-        boolean success = GifDecoderJava.getGifInfo(gifData, info);
-        if (!success) {
-            throw new IOException("Failed to read GIF information");
-        }
-
-        return info;
+        return GifToWebPConverter.getInfo(gifData);
     }
 
     /**
@@ -533,10 +263,11 @@ public final class WebPCodec {
      *
      * @param gifData Byte array containing the GIF image data
      * @return Byte array containing the WebP encoded image
-     * @throws IOException If conversion fails
+     * @throws IOException              If conversion fails
+     * @throws IllegalArgumentException If gifData is null or empty
      */
     public static byte[] encodeGifToWebP(byte[] gifData) throws IOException {
-        return encodeGifToWebP(gifData, new GifToWebPConfig());
+        return GifToWebPConverter.convert(gifData);
     }
 
     /**
@@ -550,54 +281,13 @@ public final class WebPCodec {
      * </ul>
      *
      * @param gifData Byte array containing the GIF image data
-     * @param config Configuration for conversion (quality, lossless, compression, etc.)
+     * @param config  Configuration for conversion (quality, lossless, compression, etc.)
      * @return Byte array containing the WebP encoded image
-     * @throws IOException If conversion fails
+     * @throws IOException              If conversion fails
      * @throws IllegalArgumentException If gifData or config is null
      */
     public static byte[] encodeGifToWebP(byte[] gifData, GifToWebPConfig config) throws IOException {
-        if (gifData == null || gifData.length == 0) {
-            throw new IllegalArgumentException("GIF data cannot be null or empty");
-        }
-        if (config == null) {
-            throw new IllegalArgumentException("Config cannot be null");
-        }
-
-        // Try native path first (giflib + JNI) for best performance
-        byte[] result = null;
-        try {
-            result = NativeWebP.encodeGifToWebP(
-                    gifData,
-                    config.getQuality(),
-                    config.isLossless(),
-                    config.getCompressionMethod(),
-                    config.isExtractFirstFrameOnly(),
-                    config.getLoopCount() == -1 ? ((Supplier<Integer>) () -> {
-                        try {
-                            return getGifInfo(gifData).getLoopCount(); // Use GIF's loop count, default to 0 (infinite loop) if not set
-                        } catch (Exception e) {
-                            return 0; // Default to infinite loop if unable to read GIF info
-                        }
-                    }).get() : config.getLoopCount(),
-                    config.getKmin(),
-                    config.getKmax(),
-                    config.isMinimizeSize(),
-                    config.isAllowMixed()
-            );
-
-            if (result != null && result.length > 0) {
-                return result;  // Success via native path
-            }
-        } catch (UnsatisfiedLinkError e) {
-            // Native library not available, fall back to Java ImageIO
-        }
-
-        // If native path returned null or failed to load, try Java ImageIO fallback
-        if (result == null) {
-            return encodeGifToWebPUsingJavaImageIO(gifData, config);
-        }
-
-        throw new IOException("Native GIF encoding returned empty result");
+        return GifToWebPConverter.convert(gifData, config);
     }
 
     /**
@@ -608,11 +298,16 @@ public final class WebPCodec {
      *
      * @param gifData Byte array containing the GIF image data
      * @return Byte array containing the lossless WebP encoded image
-     * @throws IOException If conversion fails
+     * @throws IOException              If conversion fails
+     * @throws IllegalArgumentException If gifData is null or empty
      */
     public static byte[] encodeGifToWebPLossless(byte[] gifData) throws IOException {
-        return encodeGifToWebP(gifData, GifToWebPConfig.createLosslessConfig());
+        return GifToWebPConverter.convertLossless(gifData);
     }
+
+    // ============================================
+    // Animated WebP Creation (Delegate to AnimatedWebPEncoder)
+    // ============================================
 
     /**
      * Creates an animated WebP from a list of BufferedImage frames.
@@ -632,357 +327,11 @@ public final class WebPCodec {
      * @param delays Array of frame delays in milliseconds (must match frame count)
      * @param config Configuration for encoding (quality, compression, etc.)
      * @return Byte array containing the animated WebP data
-     * @throws IOException If encoding fails
+     * @throws IOException              If encoding fails
      * @throws IllegalArgumentException If frames is empty or delays length doesn't match
      */
     public static byte[] createAnimatedWebP(List<BufferedImage> frames, int[] delays, GifToWebPConfig config) throws IOException {
-        if (frames == null || frames.isEmpty()) {
-            throw new IllegalArgumentException("Frames list cannot be null or empty");
-        }
-        if (delays == null || delays.length != frames.size()) {
-            throw new IllegalArgumentException("Delays array length must match frame count");
-        }
-        if (config == null) {
-            config = new GifToWebPConfig();
-        }
-
-        // Get canvas dimensions from first frame
-        BufferedImage firstFrame = frames.get(0);
-        int width = firstFrame.getWidth();
-        int height = firstFrame.getHeight();
-
-        // Convert all BufferedImage frames to RGBA byte arrays
-        byte[][] frameData = new byte[frames.size()][];
-
-        try {
-            for (int i = 0; i < frames.size(); i++) {
-                BufferedImage frame = frames.get(i);
-
-                // Validate frame dimensions match canvas
-                if (frame.getWidth() != width || frame.getHeight() != height) {
-                    throw new IllegalArgumentException(
-                        String.format("Frame %d dimensions (%dx%d) don't match canvas (%dx%d)",
-                            i, frame.getWidth(), frame.getHeight(), width, height));
-                }
-
-                frameData[i] = convertBufferedImageToBytes(frame);
-            }
-
-            // Encode using native WebPAnimEncoder
-            byte[] result = NativeWebP.encodeAnimatedWebP(
-                    frameData,
-                    delays,
-                    width,
-                    height,
-                    config.getQuality(),
-                    config.isLossless(),
-                    config.getCompressionMethod(),
-                    config.getLoopCount() == -1 ? 0 : config.getLoopCount(),  // Default to infinite loop
-                    config.getKmin(),
-                    config.getKmax(),
-                    config.isMinimizeSize(),
-                    config.isAllowMixed()
-            );
-
-            if (result == null || result.length == 0) {
-                throw new IOException("Animated WebP encoding failed");
-            }
-
-            return result;
-
-        } finally {
-            // Clear frame data arrays to free memory
-            for (byte[] frame : frameData) {
-                if (frame != null) {
-                    Arrays.fill(frame, (byte) 0);
-                }
-            }
-        }
-    }
-
-    /**
-     * Fallback implementation: Encodes GIF to WebP using Java ImageIO for GIF decoding.
-     * <p>
-     * This method is used when native giflib is unavailable. It decodes the GIF
-     * using Java's ImageIO, then encodes to WebP using native WebPAnimEncoder.
-     * <p>
-     * Note: Even in fallback mode, WebP encoding still requires native library
-     * (WebPAnimEncoder for animated images, or existing encode methods for static images).
-     * <p>
-     * Package-private for testing purposes.
-     *
-     * @param gifData Byte array containing the GIF image data
-     * @param config Configuration for conversion
-     * @return Byte array containing the WebP encoded image
-     * @throws IOException If conversion fails
-     */
-    static byte[] encodeGifToWebPUsingJavaImageIO(byte[] gifData, GifToWebPConfig config) throws IOException {
-        // Decode GIF using Java ImageIO
-        GifDecoderJava.GifData gif = GifDecoderJava.decodeGif(gifData);
-
-        if (config.isExtractFirstFrameOnly() || gif.frames.size() == 1) {
-            // Static GIF or extract first frame only: use existing single-frame encoding
-            BufferedImage firstFrame = gif.frames.get(0).image;
-            return encodeImage(firstFrame, config.getQuality(), config.isLossless());
-        }
-
-        // Animated GIF: encode all frames using native WebPAnimEncoder
-        // Convert frames to RGBA byte arrays
-        byte[][] frameData = new byte[gif.frames.size()][];
-        int[] delays = new int[gif.frames.size()];
-
-        // Maintain a canvas for frame composition (GIF frames may be incremental)
-        BufferedImage canvas = new BufferedImage(gif.width, gif.height, BufferedImage.TYPE_INT_ARGB);
-        BufferedImage previousFrame = null;
-
-        try {
-            for (int i = 0; i < gif.frames.size(); i++) {
-                previousFrame = composeGifFrame(gif, i, canvas, previousFrame);
-                frameData[i] = convertBufferedImageToBytes(canvas);
-                delays[i] = gif.frames.get(i).delayMs;
-            }
-
-            // Use native WebPAnimEncoder for animated output
-            byte[] result = NativeWebP.encodeAnimatedWebP(
-                    frameData,
-                    delays,
-                    gif.width,
-                    gif.height,
-                    config.getQuality(),
-                    config.isLossless(),
-                    config.getCompressionMethod(),
-                    config.getLoopCount() == -1 ? gif.loopCount : config.getLoopCount(),
-                    config.getKmin(),
-                    config.getKmax(),
-                    config.isMinimizeSize(),
-                    config.isAllowMixed()
-            );
-
-            if (result == null || result.length == 0) {
-                throw new IOException("Animated WebP encoding failed");
-            }
-
-            return result;
-
-        } finally {
-            // Clear frame data arrays to free memory
-            for (byte[] frame : frameData) {
-                if (frame != null) {
-                    Arrays.fill(frame, (byte) 0);
-                }
-            }
-        }
-    }
-
-    /**
-     * Composes a single GIF frame onto a canvas, applying disposal methods and frame composition.
-     * <p>
-     * This method handles the GIF animation frame composition logic:
-     * <ul>
-     *   <li>Applies the previous frame's disposal method (clear or restore)</li>
-     *   <li>Saves the canvas state if needed for future restoration (disposal method 3)</li>
-     *   <li>Draws the current frame onto the canvas at its offset position</li>
-     * </ul>
-     *
-     * @param gif GIF data containing all frames
-     * @param frameIndex Index of the current frame to compose
-     * @param canvas The canvas to draw onto (will be modified)
-     * @param previousFrame The saved previous frame state (for disposal method 3), may be null
-     * @return The updated previousFrame (may be newly created or remain the same)
-     */
-    private static BufferedImage composeGifFrame(GifDecoderJava.GifData gif, int frameIndex,
-                                                  BufferedImage canvas, BufferedImage previousFrame) {
-        GifDecoderJava.GifFrame frame = gif.frames.get(frameIndex);
-
-        // Apply disposal method from the PREVIOUS frame (before drawing current frame)
-        if (frameIndex > 0 && gif.frames.get(frameIndex - 1).disposeMethod == 2) {
-            // Disposal method 2: Restore to background (clear to transparent)
-            Graphics2D g2d = canvas.createGraphics();
-            try {
-                g2d.setComposite(AlphaComposite.Clear);
-                GifDecoderJava.GifFrame prevFrame = gif.frames.get(frameIndex - 1);
-                g2d.fillRect(
-                    prevFrame.leftOffset,
-                    prevFrame.topOffset,
-                    prevFrame.image.getWidth(),
-                    prevFrame.image.getHeight()
-                );
-            } finally {
-                g2d.dispose();
-            }
-        } else if (frameIndex > 0 && gif.frames.get(frameIndex - 1).disposeMethod == 3 && previousFrame != null) {
-            // Disposal method 3: Restore to previous frame
-            Graphics2D g2d = canvas.createGraphics();
-            try {
-                g2d.setComposite(AlphaComposite.Src);
-                g2d.drawImage(previousFrame, 0, 0, null);
-            } finally {
-                g2d.dispose();
-            }
-        }
-
-        // Save current canvas state if next frame needs it (disposal method 3)
-        BufferedImage updatedPreviousFrame = previousFrame;
-        if (frameIndex < gif.frames.size() - 1 && frame.disposeMethod == 3) {
-            updatedPreviousFrame = new BufferedImage(gif.width, gif.height, BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g2d = updatedPreviousFrame.createGraphics();
-            try {
-                g2d.drawImage(canvas, 0, 0, null);
-            } finally {
-                g2d.dispose();
-            }
-        }
-
-        // Draw current frame onto canvas at its offset position
-        Graphics2D g2d = canvas.createGraphics();
-        try {
-            g2d.setComposite(AlphaComposite.SrcOver);
-            g2d.drawImage(frame.image, frame.leftOffset, frame.topOffset, null);
-        } finally {
-            g2d.dispose();
-        }
-
-        return updatedPreviousFrame;
-    }
-
-    /**
-     * Normalizes a list of frames for animation using default strategy.
-     * - Target size: min width/height among frames (avoids upscaling)
-     * - Fit: CONTAIN (preserve aspect, letterbox center)
-     * - Background: transparent
-     *
-     * @param frames Source frames (must be non-empty)
-     * @return New list of TYPE_INT_ARGB frames of identical size
-     * @throws IllegalArgumentException if frames is null/empty or contains invalid images
-     */
-    public static List<BufferedImage> normalizeFramesForAnimation(List<BufferedImage> frames) {
-        return normalizeFramesForAnimation(frames, null, null, FitMode.CONTAIN, false, new Color(0, 0, 0, 0));
-    }
-
-    /**
-     * Normalizes frames to a common canvas with configurable strategy.
-     * Returns new TYPE_INT_ARGB frames with identical dimensions.
-     *
-     * @param frames Source frames (must be non-empty)
-     * @param targetWidth Target canvas width (nullable: use min width across frames)
-     * @param targetHeight Target canvas height (nullable: use min height across frames)
-     * @param fitMode How to fit frames onto canvas (CONTAIN/COVER/STRETCH)
-     * @param allowUpscale Whether to allow upscaling smaller images
-     * @param background Background color to fill (use transparent for alpha)
-     * @return List of normalized frames (new BufferedImage instances)
-     */
-    public static List<BufferedImage> normalizeFramesForAnimation(
-            List<BufferedImage> frames,
-            Integer targetWidth,
-            Integer targetHeight,
-            FitMode fitMode,
-            boolean allowUpscale,
-            Color background
-    ) {
-        if (frames == null || frames.isEmpty()) {
-            throw new IllegalArgumentException("Frames list cannot be null or empty");
-        }
-        if (fitMode == null) fitMode = FitMode.CONTAIN;
-        if (background == null) background = new Color(0, 0, 0, 0);
-
-        // Calculate min dimensions if target size not specified
-        int minW = Integer.MAX_VALUE;
-        int minH = Integer.MAX_VALUE;
-        boolean needMinDimensions = (targetWidth == null || targetWidth <= 0)
-                || (targetHeight == null || targetHeight <= 0);
-
-        for (BufferedImage img : frames) {
-            if (img == null) throw new IllegalArgumentException("Frame image cannot be null");
-            if (needMinDimensions) {
-                minW = Math.min(minW, img.getWidth());
-                minH = Math.min(minH, img.getHeight());
-            }
-        }
-
-        int canvasW = (targetWidth != null && targetWidth > 0) ? targetWidth : minW;
-        int canvasH = (targetHeight != null && targetHeight > 0) ? targetHeight : minH;
-        if (canvasW <= 0 || canvasH <= 0) {
-            throw new IllegalArgumentException("Invalid target canvas size");
-        }
-
-        ArrayList<BufferedImage> out = new ArrayList<>(frames.size());
-
-        for (BufferedImage src : frames) {
-            int sw = src.getWidth();
-            int sh = src.getHeight();
-
-            // Fast path: direct copy when no transformation needed
-            if (sw == canvasW && sh == canvasH && fitMode != FitMode.COVER) {
-                BufferedImage copy = new BufferedImage(canvasW, canvasH, BufferedImage.TYPE_INT_ARGB);
-                Graphics2D g2d = copy.createGraphics();
-                try {
-                    g2d.drawImage(src, 0, 0, null);
-                } finally {
-                    g2d.dispose();
-                }
-                out.add(copy);
-                continue;
-            }
-
-            BufferedImage canvas = new BufferedImage(canvasW, canvasH, BufferedImage.TYPE_INT_ARGB);
-            Graphics2D g2d = canvas.createGraphics();
-            try {
-                // Fill background
-                g2d.setComposite(AlphaComposite.Src);
-                g2d.setColor(background);
-                g2d.fillRect(0, 0, canvasW, canvasH);
-
-                // Set high-quality rendering hints
-                g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-                g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-                g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-                int dw, dh, dx, dy;
-                switch (fitMode) {
-                    case COVER: {
-                        double scale = Math.max((double) canvasW / sw, (double) canvasH / sh);
-                        if (!allowUpscale) scale = Math.min(1.0, scale);
-                        dw = Math.max(1, (int) Math.round(sw * scale));
-                        dh = Math.max(1, (int) Math.round(sh * scale));
-                        dx = (canvasW - dw) / 2;
-                        dy = (canvasH - dh) / 2;
-                        break;
-                    }
-                    case STRETCH: {
-                        if (allowUpscale) {
-                            dw = canvasW;
-                            dh = canvasH;
-                            dx = 0;
-                            dy = 0;
-                        } else {
-                            dw = Math.min(canvasW, sw);
-                            dh = Math.min(canvasH, sh);
-                            dx = (canvasW - dw) / 2;
-                            dy = (canvasH - dh) / 2;
-                        }
-                        break;
-                    }
-                    case CONTAIN:
-                    default: {
-                        double scale = Math.min((double) canvasW / sw, (double) canvasH / sh);
-                        if (!allowUpscale) scale = Math.min(1.0, scale);
-                        dw = Math.max(1, (int) Math.round(sw * scale));
-                        dh = Math.max(1, (int) Math.round(sh * scale));
-                        dx = (canvasW - dw) / 2;
-                        dy = (canvasH - dh) / 2;
-                        break;
-                    }
-                }
-
-                g2d.drawImage(src, dx, dy, dw, dh, null);
-            } finally {
-                g2d.dispose();
-            }
-
-            out.add(canvas);
-        }
-
-        return out;
+        return AnimatedWebPEncoder.encode(frames, delays, config);
     }
 
 }

@@ -1,6 +1,7 @@
 package dev.matrixlab.webp4j;
 
 import dev.matrixlab.webp4j.gif.GifToWebPConfig;
+import dev.matrixlab.webp4j.gif.GifToWebPConverter;
 import dev.matrixlab.webp4j.internal.NativeWebP;
 import dev.matrixlab.webp4j.model.AnimationInfo;
 import dev.matrixlab.webp4j.model.VP8StatusCode;
@@ -8,12 +9,15 @@ import dev.matrixlab.webp4j.model.WebPBitstreamFeatures;
 import org.junit.jupiter.api.Test;
 
 import javax.imageio.ImageIO;
+import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -46,6 +50,9 @@ class WebP4jTest {
     private static final String OUTPUT_GIF_TO_WEBP_JAVA_IMAGEIO = TEST_OUTPUT_DIR + "gif_to_webp_java_imageio.webp";
     private static final String OUTPUT_GIF_TO_WEBP_JAVA_IMAGEIO_LOSSLESS = TEST_OUTPUT_DIR + "gif_to_webp_java_imageio_lossless.webp";
     private static final String OUTPUT_GIF_TO_WEBP_JAVA_IMAGEIO_FIRST_FRAME = TEST_OUTPUT_DIR + "gif_to_webp_java_imageio_first_frame.webp";
+
+    // Animated WebP from BufferedImages output files
+    private static final String OUTPUT_ANIMATED_WEBP_DEFAULT = TEST_OUTPUT_DIR + "animated_webp_default.webp";
 
     // Decoded output files
     private static final String OUTPUT_DECODED_RGB_PNG = TEST_OUTPUT_DIR + "decode_rgb.png";
@@ -433,7 +440,7 @@ class WebP4jTest {
         GifToWebPConfig config = new GifToWebPConfig()
                 .setExtractFirstFrameOnly(true)
                 .setLossless(true);
-        byte[] webPData = WebPCodec.encodeGifToWebPUsingJavaImageIO(gifData, config);
+        byte[] webPData = GifToWebPConverter.convertUsingJavaImageIO(gifData, config);
         assertNotNull(webPData, "WebP conversion result should not be null");
         assertTrue(webPData.length > 0, "WebP data should not be empty");
 
@@ -463,7 +470,7 @@ class WebP4jTest {
 
         // Test with default config
         GifToWebPConfig config = new GifToWebPConfig();
-        byte[] webPData = WebPCodec.encodeGifToWebPUsingJavaImageIO(gifData, config);
+        byte[] webPData = GifToWebPConverter.convertUsingJavaImageIO(gifData, config);
         assertNotNull(webPData, "WebP conversion result should not be null");
         assertTrue(webPData.length > 0, "WebP data should not be empty");
 
@@ -493,7 +500,7 @@ class WebP4jTest {
 
         // Test with lossless config
         GifToWebPConfig config = GifToWebPConfig.createLosslessConfig();
-        byte[] webPData = WebPCodec.encodeGifToWebPUsingJavaImageIO(gifData, config);
+        byte[] webPData = GifToWebPConverter.convertUsingJavaImageIO(gifData, config);
         assertNotNull(webPData, "WebP conversion result should not be null");
         assertTrue(webPData.length > 0, "WebP data should not be empty");
 
@@ -509,6 +516,50 @@ class WebP4jTest {
 
         // Save to file for manual inspection
         try (FileOutputStream fos = new FileOutputStream(OUTPUT_GIF_TO_WEBP_JAVA_IMAGEIO_LOSSLESS)) {
+            fos.write(webPData);
+        }
+    }
+
+    /**
+     * Test method for creating animated WebP from BufferedImage frames with default config.
+     */
+    @Test
+    void testCreateAnimatedWebPDefault() throws IOException {
+        // Create programmatic frames (simple colored rectangles)
+        int width = 200;
+        int height = 200;
+        int frameCount = 5;
+        List<BufferedImage> frames = new ArrayList<>();
+        int[] delays = new int[frameCount];
+
+        // Generate frames with different colors
+        Color[] colors = {Color.RED, Color.GREEN, Color.BLUE, Color.YELLOW, Color.MAGENTA};
+        for (int i = 0; i < frameCount; i++) {
+            BufferedImage frame = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g2d = frame.createGraphics();
+            g2d.setColor(colors[i]);
+            g2d.fillRect(0, 0, width, height);
+            g2d.dispose();
+            frames.add(frame);
+            delays[i] = 100;  // 100ms per frame
+        }
+
+        // Create animated WebP with default config (null config uses defaults)
+        byte[] webPData = WebPCodec.createAnimatedWebP(frames, delays, null);
+        assertNotNull(webPData, "Animated WebP data should not be null");
+        assertTrue(webPData.length > 0, "Animated WebP data should not be empty");
+
+        // Verify the output is valid animated WebP
+        WebPBitstreamFeatures features = new WebPBitstreamFeatures();
+        int status = NativeWebP.getFeatures(webPData, webPData.length, features);
+        VP8StatusCode statusCode = VP8StatusCode.getStatusCode(status);
+        assertEquals(VP8StatusCode.VP8_STATUS_OK, statusCode, "WebP features extraction should succeed");
+        assertTrue(features.isHasAnimation(), "Output should be animated WebP");
+        assertEquals(width, features.getWidth(), "Width should match input frames");
+        assertEquals(height, features.getHeight(), "Height should match input frames");
+
+        // Save to file for manual inspection
+        try (FileOutputStream fos = new FileOutputStream(OUTPUT_ANIMATED_WEBP_DEFAULT)) {
             fos.write(webPData);
         }
     }
