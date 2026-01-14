@@ -6,6 +6,9 @@
 
 - Supports WebP encoding of RGB and RGBA images with both lossy and lossless compression.
 - Supports decoding WebP images to RGB and RGBA formats.
+- **GIF to WebP conversion** with native giflib decoder and Java ImageIO fallback.
+- **Animated WebP creation** from BufferedImage frames.
+- **Frame normalization** for creating animations from images of different sizes.
 - Provides efficient image compression and decompression using libwebp.
 - Compatible with multiple platforms (supports x86 and ARM).
 - Compiled with **JDK 21** but targets **Java 8 bytecode** for maximum compatibility.
@@ -27,7 +30,7 @@ If you want to build the native libraries locally, you'll need:
 
 **Note:** The library is compiled with Java 21 using `--release 8` flag, which generates Java 8-compatible bytecode while leveraging modern build tools. This ensures the library works on any Java 8+ runtime while maintaining compatibility.
 
-## Supported platforms
+## Supported Platforms
 
 WebP4j supports the following platforms through automated CI/CD builds:
 
@@ -35,99 +38,201 @@ WebP4j supports the following platforms through automated CI/CD builds:
 - **macOS**: x64 (Intel) and arm64 (Apple Silicon)
 - **Linux**: x64 (x86-64), ARM64 (aarch64), and ARM32 (armv7)
 
-## API
+## Installation
 
-### Maven Dependency
-
-To use WebP4j in your project, add the following dependency to your `pom.xml` file:
+### Maven
 
 ```xml
 <dependency>
     <groupId>dev.matrixlab</groupId>
     <artifactId>webp4j</artifactId>
-    <version>1.3.1</version>
+    <version>1.4.0</version>
 </dependency>
 ```
 
-### Native methods
+### Gradle
 
-```java
-public native boolean getInfo(byte[] data, int[] dimensions);
-public native int getFeatures(byte[] data, int dataSize, WebPBitstreamFeatures features);
-public native byte[] encodeRGB(byte[] image, int width, int height, int stride, float quality);
-public native byte[] encodeRGBA(byte[] image, int width, int height, int stride, float quality);
-public native byte[] encodeLosslessRGB(byte[] image, int width, int height, int stride);
-public native byte[] encodeLosslessRGBA(byte[] image, int width, int height, int stride);
-public native boolean decodeRGBInto(byte[] data, byte[] outputBuffer, int outputStride);
-public native boolean decodeRGBAInto(byte[] data, byte[] outputBuffer, int outputStride);
+```groovy
+implementation 'dev.matrixlab:webp4j:1.4.0'
 ```
 
-### Encoding and Decoding methods
+## API Overview
+
+### Platform Availability
 
 ```java
-public static byte[] encodeImage(BufferedImage bufferedImage, float quality) throws IOException;
-public static byte[] encodeImage(BufferedImage bufferedImage, float quality, boolean lossless) throws IOException;
-public static byte[] encodeLosslessImage(BufferedImage bufferedImage) throws IOException;
-public static BufferedImage decodeImage(byte[] webPData) throws IOException;
+// Check if the current platform is supported
+boolean isAvailable();
 ```
 
-You can use the `encodeImage()` and `decodeImage()` methods of the `WebPCodec` class to convert image formats such as JPG/PNG to WEBP format. The library supports both lossy and lossless compression modes.
+### Static Image Encoding/Decoding
 
-#### Compression Mode Guidelines
+```java
+// Encoding
+byte[] encodeImage(BufferedImage image, float quality) throws IOException;
+byte[] encodeImage(BufferedImage image, float quality, boolean lossless) throws IOException;
+byte[] encodeLosslessImage(BufferedImage image) throws IOException;
+
+// Decoding
+BufferedImage decodeImage(byte[] webPData) throws IOException;
+
+// Info
+int[] getWebPInfo(byte[] webPData) throws IOException;  // Returns [width, height]
+```
+
+### GIF to WebP Conversion
+
+```java
+// Convert GIF to WebP
+byte[] encodeGifToWebP(byte[] gifData) throws IOException;
+byte[] encodeGifToWebP(byte[] gifData, GifToWebPConfig config) throws IOException;
+byte[] encodeGifToWebPLossless(byte[] gifData) throws IOException;
+
+// Get GIF information
+AnimationInfo getGifInfo(byte[] gifData) throws IOException;
+```
+
+### Animated WebP Creation
+
+```java
+// Create animated WebP from frames
+byte[] createAnimatedWebP(List<BufferedImage> frames, int[] delays, GifToWebPConfig config) throws IOException;
+```
+
+### Frame Normalization
+
+```java
+// Normalize frames to common size (use FrameNormalizer directly)
+List<BufferedImage> FrameNormalizer.normalize(List<BufferedImage> frames);
+List<BufferedImage> FrameNormalizer.normalize(
+    List<BufferedImage> frames,
+    Integer targetWidth,
+    Integer targetHeight,
+    FitMode fitMode,
+    boolean allowUpscale,
+    Color background
+);
+```
+
+## Usage Examples
+
+### Static Image Encoding
+
+```java
+// Lossy compression (recommended for JPG sources)
+public void encodeToWebP() throws IOException {
+    BufferedImage image = ImageIO.read(new File("input.jpg"));
+    byte[] webp = WebPCodec.encodeImage(image, 75.0f);
+    Files.write(Paths.get("output.webp"), webp);
+}
+
+// Lossless compression (recommended for PNG sources)
+public void encodeToLosslessWebP() throws IOException {
+    BufferedImage image = ImageIO.read(new File("input.png"));
+    byte[] webp = WebPCodec.encodeLosslessImage(image);
+    Files.write(Paths.get("output.webp"), webp);
+}
+```
+
+### Static Image Decoding
+
+```java
+public void decodeFromWebP() throws IOException {
+    byte[] webpData = Files.readAllBytes(Paths.get("input.webp"));
+    BufferedImage image = WebPCodec.decodeImage(webpData);
+    ImageIO.write(image, "png", new File("output.png"));
+}
+```
+
+### GIF to WebP Conversion
+
+```java
+// Default conversion (lossy, quality 75)
+public void convertGifToWebP() throws IOException {
+    byte[] gifData = Files.readAllBytes(Paths.get("input.gif"));
+    byte[] webp = WebPCodec.encodeGifToWebP(gifData);
+    Files.write(Paths.get("output.webp"), webp);
+}
+
+// Custom configuration
+public void convertGifToWebPCustom() throws IOException {
+    byte[] gifData = Files.readAllBytes(Paths.get("input.gif"));
+
+    GifToWebPConfig config = GifToWebPConfig.createLossyConfig(90.0f)
+            .setCompressionMethod(6)
+            .setMinimizeSize(true);
+
+    byte[] webp = WebPCodec.encodeGifToWebP(gifData, config);
+    Files.write(Paths.get("output.webp"), webp);
+}
+
+// Lossless conversion
+public void convertGifToWebPLossless() throws IOException {
+    byte[] gifData = Files.readAllBytes(Paths.get("input.gif"));
+    byte[] webp = WebPCodec.encodeGifToWebPLossless(gifData);
+    Files.write(Paths.get("output.webp"), webp);
+}
+```
+
+### Creating Animated WebP from Images
+
+```java
+public void createAnimatedWebP() throws IOException {
+    // Load frames
+    List<BufferedImage> frames = Arrays.asList(
+        ImageIO.read(new File("frame1.png")),
+        ImageIO.read(new File("frame2.png")),
+        ImageIO.read(new File("frame3.png"))
+    );
+
+    // Normalize frames to same size (required for animation)
+    frames = FrameNormalizer.normalize(frames);
+
+    // Set delays (milliseconds per frame)
+    int[] delays = {100, 100, 100};
+
+    // Create animated WebP
+    GifToWebPConfig config = GifToWebPConfig.createLosslessConfig();
+    byte[] webp = WebPCodec.createAnimatedWebP(frames, delays, config);
+
+    Files.write(Paths.get("animated.webp"), webp);
+}
+```
+
+### Advanced Frame Normalization
+
+```java
+public void normalizeWithCustomSettings() throws IOException {
+    List<BufferedImage> frames = loadFrames();
+
+    // Normalize to specific size with custom fit mode
+    List<BufferedImage> normalized = FrameNormalizer.normalize(
+        frames,
+        800,                        // target width
+        600,                        // target height
+        FitMode.CONTAIN,            // preserve aspect ratio, letterbox
+        false,                      // don't upscale smaller images
+        new Color(0, 0, 0, 0)       // transparent background
+    );
+
+    // FitMode options:
+    // - CONTAIN: Fit entire image, may have letterboxing
+    // - COVER: Fill entire canvas, may crop edges
+    // - STRETCH: Stretch to fill, may distort aspect ratio
+}
+```
+
+## Compression Mode Guidelines
 
 - **Lossless compression**: Recommended for PNG and other lossless image formats to preserve image quality without any data loss.
 - **Lossy compression**: Recommended for JPG and other lossy image formats. Using lossless compression on already-compressed JPG images is not recommended as it may result in larger file sizes without quality benefits.
 
-### Example
-
-```java
-// Lossy compression example (recommended for JPG sources)
-public void encodeToWebP() throws IOException {
-    // Read the source image from disk
-    BufferedImage bufferedImage = ImageIO.read(new File("input.jpg"));
-
-    // Set the compression quality (0.0f = worst, 100.0f = best)
-    float quality = 75.0f;
-
-    // Encode the BufferedImage into WebP byte array
-    byte[] encodedWebP = WebPCodec.encodeImage(bufferedImage, quality);
-
-    // Write the encoded bytes to the output file
-    try (FileOutputStream fos = new FileOutputStream("output.webp")) {
-        fos.write(encodedWebP);
-    }
-}
-
-// Lossless compression example (recommended for PNG sources)
-public void encodeToLosslessWebP() throws IOException {
-    // Read the source image from disk
-    BufferedImage bufferedImage = ImageIO.read(new File("input.png"));
-
-    // Encode the BufferedImage into lossless WebP byte array
-    byte[] encodedWebP = WebPCodec.encodeLosslessImage(bufferedImage);
-
-    // Write the encoded bytes to the output file
-    try (FileOutputStream fos = new FileOutputStream("output_lossless.webp")) {
-        fos.write(encodedWebP);
-    }
-}
-
-// Decoding example
-public void decodeFromWebP() throws IOException {
-    // Read all bytes from the WebP file into memory
-    byte[] webPData = Files.readAllBytes(Paths.get("input.webp"));
-
-    // Decode the WebP byte array into a BufferedImage
-    BufferedImage image = WebPCodec.decodeImage(webPData);
-
-    // Write the decoded image as a JPEG file
-    ImageIO.write(image, "jpg", new File("decoded_output.jpg"));
-}
-```
-
 ## Future Work
 
-Currently, WebP4j has encapsulated native methods. We will continue to update, develop more efficient APIs, and continuously improve documentation.
+- **Multi-threaded encoding** - Parallel frame encoding for animated WebP
+- **Batch processing** - Optimize bulk image conversion performance
+- **Memory optimization** - Reduce memory allocation and GC pressure
+- **Zero-copy optimization** - Minimize data copying between Java and native layers
 
 ## License
 

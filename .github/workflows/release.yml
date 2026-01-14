@@ -124,6 +124,13 @@ jobs:
         body: |
           ## WebP4j Release
 
+          ### What's Changed
+          - **Platform availability check** - Added `isAvailable()` method to check if the current platform is supported before encoding/decoding.
+          - **GIF to WebP conversion** - Native giflib decoder with Java ImageIO fallback for maximum compatibility.
+          - **Animated WebP creation** - Create animated WebP directly from `BufferedImage` frames.
+          - **Frame normalization** - Normalize frames of different sizes for animation with configurable fit modes (CONTAIN/COVER/STRETCH).
+          - **Code restructuring** - Refactored into focused modules for better maintainability.
+
           ### Installation
 
           **Maven:**
@@ -139,10 +146,6 @@ jobs:
           ```gradle
           implementation 'dev.matrixlab:webp4j:${{ steps.version.outputs.VERSION }}'
           ```
-
-          ### Files Included
-          - `webp4j-${{ steps.version.outputs.VERSION }}.jar` - Main JAR with all native libraries bundled
-          - `SHA256SUMS` - Checksum file for verification
 
           ### Supported Platforms
           - Windows x64
