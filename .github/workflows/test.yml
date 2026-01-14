@@ -62,7 +62,7 @@ jobs:
 
       - name: Download all native libraries (from latest successful run)
         if: github.event_name == 'workflow_dispatch' && !inputs.rebuild_natives
-        uses: dawidd6/action-download-artifact@v3
+        uses: dawidd6/action-download-artifact@v6
         with:
           workflow: build-natives.yml
           name: webp4j-all-platforms
