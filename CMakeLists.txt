@@ -21,6 +21,28 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
   endif()
   message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
+  # Set global compiler optimization flags for QEMU builds BEFORE adding dependencies
+  # This ensures libwebp and giflib inherit the correct optimization level
+  if(DEFINED ENV{WEBP4J_QEMU_BUILD} AND "$ENV{WEBP4J_QEMU_BUILD}" STREQUAL "1")
+      # QEMU builds: Force -O1 to prevent GCC crashes in emulated environments
+      # We need to:
+      # 1. Set base flags without optimization
+      # 2. Add -O1 to CMAKE_C_FLAGS and CMAKE_CXX_FLAGS to override subdirectory flags
+      set(CMAKE_C_FLAGS_RELEASE "-DNDEBUG" CACHE STRING "Flags used by C compiler during release builds" FORCE)
+      set(CMAKE_CXX_FLAGS_RELEASE "-DNDEBUG" CACHE STRING "Flags used by CXX compiler during release builds" FORCE)
+
+      # Append -O1 to base flags - this will appear LAST in the command line
+      string(APPEND CMAKE_C_FLAGS " -O1")
+      string(APPEND CMAKE_CXX_FLAGS " -O1")
+
+      message(STATUS "Global compiler optimization: -O1 (QEMU build environment)")
+  else()
+      # Native builds: Use maximum optimization
+      set(CMAKE_C_FLAGS_RELEASE "-O3 -DNDEBUG" CACHE STRING "Flags used by C compiler during release builds" FORCE)
+      set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG" CACHE STRING "Flags used by CXX compiler during release builds" FORCE)
+      message(STATUS "Global compiler optimization: -O3 (native build)")
+  endif()
+
   # Find JNI
   find_package(JNI REQUIRED)
   include_directories(${JNI_INCLUDE_DIRS})
@@ -37,7 +59,7 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
       set(WEBP_BUILD_IMG2WEBP OFF CACHE BOOL "" FORCE)
       set(WEBP_BUILD_VWEBP OFF CACHE BOOL "" FORCE)
       set(WEBP_BUILD_WEBPINFO OFF CACHE BOOL "" FORCE)
-      set(WEBP_BUILD_WEBPMUX OFF CACHE BOOL "" FORCE)
+      set(WEBP_BUILD_WEBPMUX ON CACHE BOOL "" FORCE)
       set(WEBP_BUILD_EXTRAS OFF CACHE BOOL "" FORCE)
 
       # Conditionally disable CPU-specific SIMD optimizations for QEMU build environments
@@ -71,6 +93,11 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
           set(WEBP_BUILD_SSE2 OFF CACHE BOOL "" FORCE)
           set(WEBP_BUILD_SSE41 OFF CACHE BOOL "" FORCE)
           set(WEBP_BUILD_AVX2 OFF CACHE BOOL "" FORCE)
+          # Additional runtime detection flags
+          set(WEBP_ENABLE_SIMD_AVX2 OFF CACHE BOOL "" FORCE)
+          set(WEBP_HAVE_SSE2 OFF CACHE BOOL "" FORCE)
+          set(WEBP_HAVE_SSE41 OFF CACHE BOOL "" FORCE)
+          set(WEBP_HAVE_AVX2 OFF CACHE BOOL "" FORCE)
       else()
           message(STATUS "SIMD optimizations: ENABLED (default)")
       endif()
@@ -99,6 +126,118 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
       # We only need to build libwebp statically and link it into our webp4j library
       add_subdirectory(libwebp EXCLUDE_FROM_ALL)
 
+  # ============================================
+  # giflib Detection and Configuration
+  # ============================================
+  #
+  # Strategy: Prioritize static linking to eliminate runtime dependencies
+  #
+  # Option: WEBP4J_USE_SYSTEM_GIFLIB (default: OFF)
+  #   - OFF (default): Build giflib statically, no runtime dependencies
+  #   - ON: Use system-installed giflib (requires libgif at runtime)
+  #
+  # Build modes:
+  #   1. Static build (WEBP4J_USE_SYSTEM_GIFLIB=OFF):
+  #      - Tier 1: Use bundled source in giflib/ directory (if exists)
+  #      - Tier 2: Auto-download from SourceForge and build statically
+  #      - Result: giflib is compiled into webp4j, no external dependencies
+  #
+  #   2. System build (WEBP4J_USE_SYSTEM_GIFLIB=ON):
+  #      - Uses system giflib via find_library()
+  #      - Requires: brew install giflib (macOS) or apt install libgif-dev (Linux)
+  #      - Result: Dynamic linking, requires libgif at runtime
+  #
+  # ============================================
+
+  # Configuration option (default: OFF for maximum portability)
+  option(WEBP4J_USE_SYSTEM_GIFLIB "Use system-installed giflib instead of static build" OFF)
+
+  if(WEBP4J_USE_SYSTEM_GIFLIB)
+      # User explicitly requested system giflib
+      message(STATUS "Searching for system-installed giflib...")
+      find_library(GIFLIB_LIBRARY NAMES gif libgif)
+      find_path(GIFLIB_INCLUDE_DIR gif_lib.h)
+
+      if(GIFLIB_LIBRARY AND GIFLIB_INCLUDE_DIR)
+          message(STATUS "✓ Using system giflib: ${GIFLIB_LIBRARY}")
+          message(WARNING "System giflib requires runtime dependency: ${GIFLIB_LIBRARY}")
+          set(GIFLIB_FOUND TRUE)
+      else()
+          message(FATAL_ERROR "WEBP4J_USE_SYSTEM_GIFLIB=ON but system giflib not found. Install via: brew install giflib (macOS) or apt install libgif-dev (Linux)")
+      endif()
+  else()
+      # Default: Build giflib statically for maximum portability
+      message(STATUS "Building giflib statically (no runtime dependencies)")
+
+      # Tier 1: Check if giflib source is bundled in project
+      if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/giflib/gif_lib.h")
+          message(STATUS "✓ Using bundled giflib from giflib/ subdirectory")
+          add_subdirectory(giflib EXCLUDE_FROM_ALL)
+          set(GIFLIB_LIBRARY gif)
+          set(GIFLIB_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/giflib")
+          set(GIFLIB_FOUND TRUE)
+          set(GIFLIB_STATIC TRUE)
+      else()
+          # Tier 2: Auto-download and build giflib from official source
+          message(STATUS "Downloading giflib from official SourceForge repository...")
+
+          include(FetchContent)
+
+          # Download giflib 5.2.2 (June 2024): Latest stable release with security fixes
+          # Official repo: https://sourceforge.net/projects/giflib/
+          FetchContent_Declare(
+              giflib
+              GIT_REPOSITORY https://git.code.sf.net/p/giflib/code
+              GIT_TAG        5.2.2
+              GIT_SHALLOW    TRUE
+          )
+
+          FetchContent_GetProperties(giflib)
+          if(NOT giflib_POPULATED)
+              message(STATUS "Downloading giflib source code...")
+              FetchContent_Populate(giflib)
+
+              # Build giflib manually (giflib uses autotools, not CMake)
+              # We create a minimal CMakeLists.txt to compile only what we need
+              set(GIFLIB_SOURCE_DIR ${giflib_SOURCE_DIR})
+              set(GIFLIB_BUILD_DIR ${CMAKE_BINARY_DIR}/giflib-build)
+              file(MAKE_DIRECTORY ${GIFLIB_BUILD_DIR})
+
+              # Create a minimal CMakeLists.txt for giflib
+              # We only compile the core library files needed for GIF decoding
+              file(WRITE ${GIFLIB_BUILD_DIR}/CMakeLists.txt "
+cmake_minimum_required(VERSION 3.15)
+project(giflib C)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+# Build static library with core GIF decoding/encoding functions
+add_library(gif STATIC
+    ${GIFLIB_SOURCE_DIR}/dgif_lib.c      # GIF decoder
+    ${GIFLIB_SOURCE_DIR}/egif_lib.c      # GIF encoder
+    ${GIFLIB_SOURCE_DIR}/gifalloc.c      # Memory allocation
+    ${GIFLIB_SOURCE_DIR}/gif_err.c       # Error handling
+    ${GIFLIB_SOURCE_DIR}/gif_font.c      # Font support
+    ${GIFLIB_SOURCE_DIR}/gif_hash.c      # Hash table
+    ${GIFLIB_SOURCE_DIR}/openbsd-reallocarray.c  # Safe realloc
+)
+
+target_include_directories(gif PUBLIC ${GIFLIB_SOURCE_DIR})
+")
+
+              # Add giflib as subdirectory
+              add_subdirectory(${GIFLIB_BUILD_DIR} ${CMAKE_BINARY_DIR}/giflib-build-bin EXCLUDE_FROM_ALL)
+
+              set(GIFLIB_LIBRARY gif)
+              set(GIFLIB_INCLUDE_DIR ${GIFLIB_SOURCE_DIR})
+              set(GIFLIB_FOUND TRUE)
+              set(GIFLIB_STATIC TRUE)
+              message(STATUS "✓ giflib downloaded and configured for static linking")
+          endif()
+      endif()
+  endif()
+
   # Add header file search paths
   include_directories(
       ${CMAKE_CURRENT_SOURCE_DIR}/src/main/c
@@ -106,11 +245,21 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
       ${CMAKE_CURRENT_BINARY_DIR}/libwebp/src
   )
 
+  if(GIFLIB_FOUND)
+      include_directories(${GIFLIB_INCLUDE_DIR})
+  endif()
+
   # Source files
-  set(SOURCES
-      src/main/c/webp4j.c
-      # Add other source files
-  )
+  set(SOURCES src/main/c/webp4j.c)
+
+  # Add GIF decoder if giflib is available
+  if(GIFLIB_FOUND)
+      list(APPEND SOURCES src/main/c/gif_decoder.c)
+      add_compile_definitions(HAVE_GIFLIB=1)
+      message(STATUS "GIF decoder enabled")
+  else()
+      message(STATUS "GIF decoder disabled (giflib not available)")
+  endif()
 
   # Create shared library
   add_library(webp4j SHARED ${SOURCES})
@@ -118,12 +267,19 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
   # Link libraries
   # - webp (main library)
   # - sharpyuv (libwebp dependency)
-  # - webpmux and webpdemux (optional, but recommended for full functionality)
+  # - libwebpmux (required for animated WebP encoding)
+  # - gif (optional, for native GIF decoding)
   target_link_libraries(webp4j PRIVATE
       ${JNI_LIBRARIES}
       webp
       sharpyuv
+      libwebpmux
   )
+
+  # Link giflib if available
+  if(GIFLIB_FOUND)
+      target_link_libraries(webp4j PRIVATE ${GIFLIB_LIBRARY})
+  endif()
 
   # On Linux, use --whole-archive to ensure all symbols are included
   if(UNIX AND NOT APPLE)
@@ -132,16 +288,14 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
   endif()
 
   # ============================================
-  # Compiler Optimization Options
+  # Compiler Warning Options
   # ============================================
 
-  # Set compiler warnings and optimization options
   if(MSVC)
       # MSVC compiler options
       target_compile_options(webp4j PRIVATE
           /W4                 # Warning level 4
           /WX-                # Warnings not as errors
-          /O2                 # Release optimization
       )
   else()
       # GCC/Clang compiler options
@@ -149,10 +303,8 @@ project(webp4j VERSION 1.0.0 LANGUAGES C CXX)
           -Wall               # Enable all warnings
           -Wextra             # Enable extra warnings
           -pedantic           # Strict standard compliance
-          $<$<CONFIG:Release>:-O3>            # Release mode: maximum optimization
-          $<$<CONFIG:Release>:-DNDEBUG>       # Release mode: disable assertions
-          $<$<CONFIG:Debug>:-g>               # Debug mode: debug info
-          $<$<CONFIG:Debug>:-O0>              # Debug mode: no optimization
+          $<$<CONFIG:Debug>:-g>    # Debug mode: debug info
+          $<$<CONFIG:Debug>:-O0>   # Debug mode: no optimization
       )
 
       # Link-time optimization (LTO)

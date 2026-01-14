@@ -1,4 +1,6 @@
-package dev.matrixlab.webp4j;
+package dev.matrixlab.webp4j.internal;
+
+import dev.matrixlab.webp4j.exception.NativeLibraryNotFoundException;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -6,9 +8,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 
-public class NativeLibraryLoaderUtils {
+public class NativeLibraryLoader {
 
-    private NativeLibraryLoaderUtils() {
+    private NativeLibraryLoader() {
         throw new AssertionError("Cannot instantiate utility class.");
     }
 
@@ -22,7 +24,7 @@ public class NativeLibraryLoaderUtils {
         String resourcePath = String.format("/native/%s", libraryFileName);
 
         // Get the library from the jar
-        try (InputStream in = NativeLibraryLoaderUtils.class.getResourceAsStream(resourcePath)) {
+        try (InputStream in = NativeLibraryLoader.class.getResourceAsStream(resourcePath)) {
             if (in == null) {
                 throw new NativeLibraryNotFoundException(
                         String.format("Native library not found: %s%n" +

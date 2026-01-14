@@ -1,4 +1,4 @@
-package dev.matrixlab.webp4j;
+package dev.matrixlab.webp4j.exception;
 
 
 public class NativeLibraryNotFoundException extends RuntimeException {

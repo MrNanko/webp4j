@@ -1,4 +1,4 @@
-name: Release - Publish to Maven Central
+name: Release
 
 on:
   push:
@@ -19,50 +19,6 @@ jobs:
   build-natives:
     name: Build Native Libraries
     uses: ./.github/workflows/build-natives.yml
-
-  # ============================================
-  # Collect libraries from all platforms
-  # ============================================
-  collect-artifacts:
-    name: Collect Artifacts
-    needs: build-natives
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        pattern: webp4j-*
-        path: native-libraries
-
-    - name: Display structure of downloaded files
-      run: ls -R native-libraries
-
-    - name: Organize files
-      run: |
-        mkdir -p collected
-        find native-libraries -type f \( -name "*.dll" -o -name "*.so" -o -name "*.dylib" \) -exec cp {} collected/ \;
-        ls -lh collected/
-
-    - name: Upload collected libraries
-      uses: actions/upload-artifact@v4
-      with:
-        name: webp4j-all-platforms
-        path: collected/
-        retention-days: 30
-
-    - name: Create checksum
-      run: |
-        cd collected
-        sha256sum * > SHA256SUMS
-        cat SHA256SUMS
-
-    - name: Upload checksum
-      uses: actions/upload-artifact@v4
-      with:
-        name: webp4j-checksums
-        path: collected/SHA256SUMS
-        retention-days: 30
 
   # ============================================
   # Publish to Maven Central
@@ -91,17 +47,11 @@ jobs:
     - name: Download all native artifacts
       uses: actions/download-artifact@v4
       with:
-        pattern: webp4j-*
-        merge-multiple: true
-        path: downloads
+        name: webp4j-all-platforms
+        path: src/main/resources/native
 
-    - name: Prepare native resources directory
+    - name: Display native libraries
       run: |
-        mkdir -p src/main/resources/native
-        shopt -s nullglob
-        mv downloads/*.so src/main/resources/native/ 2>/dev/null || true
-        mv downloads/*.dylib src/main/resources/native/ 2>/dev/null || true
-        mv downloads/*.dll src/main/resources/native/ 2>/dev/null || true
         echo "Native files:" && ls -lh src/main/resources/native || true
 
     - name: Build and package JAR
@@ -118,13 +68,13 @@ jobs:
         mvn -B deploy -DskipTests
 
   # ============================================
-  # Create GitHub Release (only when tag is pushed)
+  # Create GitHub Release
   # ============================================
   create-release:
     name: Create GitHub Release
     needs: publish-maven
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v')  # Only when tag is pushed
 
     steps:
     - name: Checkout code
@@ -144,17 +94,11 @@ jobs:
     - name: Download all native artifacts
       uses: actions/download-artifact@v4
       with:
-        pattern: webp4j-*
-        merge-multiple: true
-        path: downloads
+        name: webp4j-all-platforms
+        path: src/main/resources/native
 
-    - name: Prepare native resources directory
+    - name: Display native libraries
       run: |
-        mkdir -p src/main/resources/native
-        shopt -s nullglob
-        mv downloads/*.so src/main/resources/native/ 2>/dev/null || true
-        mv downloads/*.dylib src/main/resources/native/ 2>/dev/null || true
-        mv downloads/*.dll src/main/resources/native/ 2>/dev/null || true
         echo "Native files:" && ls -lh src/main/resources/native || true
 
     - name: Build JAR with all native libraries
@@ -180,6 +124,13 @@ jobs:
         body: |
           ## WebP4j Release
 
+          ### What's Changed
+          - **Platform availability check** - Added `isAvailable()` method to check if the current platform is supported before encoding/decoding.
+          - **GIF to WebP conversion** - Native giflib decoder with Java ImageIO fallback for maximum compatibility.
+          - **Animated WebP creation** - Create animated WebP directly from `BufferedImage` frames.
+          - **Frame normalization** - Normalize frames of different sizes for animation with configurable fit modes (CONTAIN/COVER/STRETCH).
+          - **Code restructuring** - Refactored into focused modules for better maintainability.
+
           ### Installation
 
           **Maven:**
@@ -195,10 +146,6 @@ jobs:
           ```gradle
           implementation 'dev.matrixlab:webp4j:${{ steps.version.outputs.VERSION }}'
           ```
-
-          ### Files Included
-          - `webp4j-${{ steps.version.outputs.VERSION }}.jar` - Main JAR with all native libraries bundled
-          - `SHA256SUMS` - Checksum file for verification
 
           ### Supported Platforms
           - Windows x64

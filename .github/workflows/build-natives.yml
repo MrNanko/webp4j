@@ -1,4 +1,4 @@
-name: Build Native Libraries (Reusable)
+name: Build Native Libraries
 
 on:
   workflow_call:
@@ -65,7 +65,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-15
+          - os: macos-15-intel
             arch: x64
           - os: macos-latest
             arch: arm64
@@ -135,10 +135,50 @@ jobs:
         retention-days: 7
 
   # ============================================
-  # Linux ARM64 Build (QEMU emulation)
+  # Linux ARM64 Build - Native (Priority: Self-hosted)
   # ============================================
-  build-linux-arm64:
+  build-linux-arm64-native:
+    runs-on: self-hosted
+    timeout-minutes: 15
+    continue-on-error: true  # Allow fallback to QEMU if self-hosted not available
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: ${{ env.JAVA_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake
+
+    - name: Build (Native ARM64)
+      run: |
+        mkdir build && cd build
+        cmake -DCMAKE_BUILD_TYPE=Release ..
+        make -j$(nproc)
+        make install
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: webp4j-linux-aarch64
+        path: src/main/resources/native/libwebp4j-linux-aarch64.so
+        retention-days: 7
+
+  # ============================================
+  # Linux ARM64 Build - QEMU (Fallback)
+  # ============================================
+  build-linux-arm64-qemu:
     runs-on: ubuntu-22.04
+    needs: build-linux-arm64-native
+    if: failure() || cancelled()  # Run only if native build fails or is cancelled
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -150,7 +190,7 @@ jobs:
       with:
         platforms: arm64
 
-    - name: Build on ARM64
+    - name: Build on ARM64 (QEMU Emulation)
       uses: uraimo/run-on-arch-action@v2
       with:
         arch: aarch64
@@ -222,4 +262,55 @@ jobs:
       with:
         name: webp4j-linux-arm
         path: src/main/resources/native/libwebp4j-linux-arm.so
+        retention-days: 7
+
+  # ============================================
+  # Collect all native libraries
+  # ============================================
+  collect-all-libraries:
+    name: Collect All Native Libraries
+    needs:
+      - build-windows
+      - build-macos
+      - build-linux-x64
+      - build-linux-arm64-native
+      - build-linux-arm64-qemu
+      - build-linux-arm32
+    runs-on: ubuntu-latest
+    if: always()  # Run even if some builds fail or are skipped
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        pattern: webp4j-*
+        path: native-libraries
+
+    - name: Display structure of downloaded files
+      run: ls -R native-libraries
+
+    - name: Organize files
+      run: |
+        mkdir -p collected
+        find native-libraries -type f \( -name "*.dll" -o -name "*.so" -o -name "*.dylib" \) -exec cp {} collected/ \;
+        ls -lh collected/
+
+    - name: Upload collected libraries
+      uses: actions/upload-artifact@v4
+      with:
+        name: webp4j-all-platforms
+        path: collected/
+        retention-days: 7
+
+    - name: Create checksum
+      run: |
+        cd collected
+        sha256sum * > SHA256SUMS
+        cat SHA256SUMS
+
+    - name: Upload checksum
+      uses: actions/upload-artifact@v4
+      with:
+        name: webp4j-checksums
+        path: collected/SHA256SUMS
         retention-days: 7
