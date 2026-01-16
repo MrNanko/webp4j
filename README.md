@@ -1,6 +1,6 @@
 # WebP4j
 
-**WebP4j** is a Java library based on JNI (Java Native Interface) that supports WebP image encoding and decoding in Java projects. This project utilizes Google's [libwebp](https://developers.google.com/speed/webp) library (version 1.6.0) and exposes its functionality to Java applications.
+**WebP4j** is a Java library based on JNI (Java Native Interface) that supports WebP image encoding/decoding, GIF to WebP conversion, and animated WebP creation with both lossless and lossy compression. This project utilizes Google's [libwebp](https://developers.google.com/speed/webp) library (version 1.6.0) and exposes its functionality to Java applications.
 
 ## Features
 
