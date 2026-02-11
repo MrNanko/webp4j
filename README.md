@@ -8,6 +8,7 @@
 - Supports decoding WebP images to RGB and RGBA formats.
 - **GIF to WebP conversion** with native giflib decoder and Java ImageIO fallback.
 - **Animated WebP creation** from BufferedImage frames.
+- **Animated WebP decoding** — extract individual frames and delays from existing animated WebP files.
 - **Frame normalization** for creating animations from images of different sizes.
 - Provides efficient image compression and decompression using libwebp.
 - Compatible with multiple platforms (supports x86 and ARM).
@@ -42,19 +43,30 @@ WebP4j supports the following platforms through automated CI/CD builds:
 
 ### Maven
 
+[![Maven Central](https://img.shields.io/maven-central/v/dev.matrixlab.webp4j/webp4j-core)](https://central.sonatype.com/artifact/dev.matrixlab.webp4j/webp4j-core)
+
 ```xml
 <dependency>
-    <groupId>dev.matrixlab</groupId>
-    <artifactId>webp4j</artifactId>
-    <version>1.4.0</version>
+    <groupId>dev.matrixlab.webp4j</groupId>
+    <artifactId>webp4j-core</artifactId>
+    <version>2.0.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```groovy
-implementation 'dev.matrixlab:webp4j:1.4.0'
+implementation 'dev.matrixlab.webp4j:webp4j-core:2.0.0'
 ```
+
+### Upgrading from 1.x
+
+v2.0 introduces **animated WebP decoding** (extract frames and delays from animated WebP files) and includes the following breaking changes:
+
+| | 1.x | 2.x |
+|---|---|---|
+| **Group ID** | `dev.matrixlab` | `dev.matrixlab.webp4j` |
+| **Artifact ID** | `webp4j` | `webp4j-core` |
 
 ## API Overview
 
@@ -97,6 +109,21 @@ AnimationInfo getGifInfo(byte[] gifData) throws IOException;
 ```java
 // Create animated WebP from frames
 byte[] createAnimatedWebP(List<BufferedImage> frames, int[] delays, GifToWebPConfig config) throws IOException;
+```
+
+### Animated WebP Decoding
+
+```java
+// Decode animated WebP into individual frames
+AnimatedWebPData decodeAnimatedWebP(byte[] webPData) throws IOException;
+
+// AnimatedWebPData provides:
+List<AnimatedWebPFrame> getFrames();  // Each frame: BufferedImage + timestamp
+int[] getDelays();                    // Per-frame delays in milliseconds
+int getCanvasWidth();
+int getCanvasHeight();
+int getFrameCount();
+int getLoopCount();
 ```
 
 ### Frame Normalization
@@ -199,6 +226,32 @@ public void createAnimatedWebP() throws IOException {
 }
 ```
 
+### Decoding Animated WebP into Frames
+
+```java
+public void extractFrames() throws IOException {
+    byte[] webpData = Files.readAllBytes(Paths.get("animated.webp"));
+    AnimatedWebPData result = WebPCodec.decodeAnimatedWebP(webpData);
+
+    System.out.println("Frame count: " + result.getFrameCount());
+    System.out.println("Canvas size: " + result.getCanvasWidth() + "x" + result.getCanvasHeight());
+    System.out.println("Loop count: " + result.getLoopCount());
+
+    // Get per-frame delays
+    int[] delays = result.getDelays();
+
+    // Access individual frames
+    for (int i = 0; i < result.getFrames().size(); i++) {
+        AnimatedWebPFrame frame = result.getFrames().get(i);
+        BufferedImage image = frame.getImage();
+        System.out.println("Frame " + i + ": delay=" + delays[i] + "ms");
+
+        // Save each frame as PNG
+        ImageIO.write(image, "png", new File("frame_" + i + ".png"));
+    }
+}
+```
+
 ### Advanced Frame Normalization
 
 ```java
@@ -229,10 +282,13 @@ public void normalizeWithCustomSettings() throws IOException {
 
 ## Future Work
 
-- **Multi-threaded encoding** - Parallel frame encoding for animated WebP
-- **Batch processing** - Optimize bulk image conversion performance
-- **Memory optimization** - Reduce memory allocation and GC pressure
-- **Zero-copy optimization** - Minimize data copying between Java and native layers
+- **Multi-threaded encoding** — Parallel frame encoding for animated WebP
+- **Batch processing** — Optimize bulk image conversion performance
+- **Memory optimization** — Reduce memory allocation and GC pressure
+- **Zero-copy optimization** — Minimize data copying between Java and native layers
+
+## Other Utils
+https://onlinegiftools.com/analyze-gif
 
 ## License
 
