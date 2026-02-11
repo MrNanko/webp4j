@@ -13,13 +13,21 @@ env:
 
 jobs:
   # ============================================
-  # Windows Build
+  # Windows Build (matrix for x64 and arm64)
   # ============================================
   build-windows:
-    runs-on: windows-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
-        arch: [x64]
+        include:
+          - arch: x64
+            runner: windows-latest
+            msystem: MINGW64
+            packages: mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-make
+          - arch: aarch64
+            runner: windows-11-arm
+            msystem: CLANGARM64
+            packages: mingw-w64-clang-aarch64-clang mingw-w64-clang-aarch64-cmake mingw-w64-clang-aarch64-make
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -35,12 +43,9 @@ jobs:
     - name: Setup MinGW
       uses: msys2/setup-msys2@v2
       with:
-        msystem: MINGW64
+        msystem: ${{ matrix.msystem }}
         update: true
-        install: >-
-          mingw-w64-x86_64-gcc
-          mingw-w64-x86_64-cmake
-          mingw-w64-x86_64-make
+        install: ${{ matrix.packages }}
 
     - name: Build
       shell: msys2 {0}
@@ -55,48 +60,6 @@ jobs:
       with:
         name: webp4j-windows-${{ matrix.arch }}
         path: src/main/resources/native/webp4j-windows-${{ matrix.arch }}.dll
-        retention-days: 7
-
-  # ============================================
-  # Windows ARM64 Build
-  # ============================================
-  build-windows-arm64:
-    runs-on: windows-11-arm
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: ${{ env.JAVA_VERSION }}
-
-    - name: Setup MinGW (CLANGARM64)
-      uses: msys2/setup-msys2@v2
-      with:
-        msystem: CLANGARM64
-        update: true
-        install: >-
-          mingw-w64-clang-aarch64-clang
-          mingw-w64-clang-aarch64-cmake
-          mingw-w64-clang-aarch64-make
-
-    - name: Build
-      shell: msys2 {0}
-      run: |
-        mkdir build && cd build
-        cmake -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release ..
-        mingw32-make -j$(nproc)
-        mingw32-make install
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: webp4j-windows-aarch64
-        path: src/main/resources/native/webp4j-windows-aarch64.dll
         retention-days: 7
 
   # ============================================
@@ -144,6 +107,7 @@ jobs:
   # Linux Build (x64 native)
   # ============================================
   build-linux-x64:
+    name: build-linux (x64)
     runs-on: ubuntu-22.04
     steps:
     - name: Checkout code
@@ -180,6 +144,7 @@ jobs:
   # Linux ARM64 Build - Native (Priority: Self-hosted)
   # ============================================
   build-linux-arm64-native:
+    name: build-linux (aarch64, native)
     runs-on: self-hosted
     timeout-minutes: 15
     continue-on-error: true  # Allow fallback to QEMU if self-hosted not available
@@ -218,6 +183,7 @@ jobs:
   # Linux ARM64 Build - QEMU (Fallback)
   # ============================================
   build-linux-arm64-qemu:
+    name: build-linux (aarch64, qemu)
     runs-on: ubuntu-22.04
     needs: build-linux-arm64-native
     if: failure() || cancelled()  # Run only if native build fails or is cancelled
@@ -265,6 +231,7 @@ jobs:
   # Linux ARM32 Build (QEMU emulation)
   # ============================================
   build-linux-arm32:
+    name: build-linux (arm, qemu)
     runs-on: ubuntu-22.04
     steps:
     - name: Checkout code
@@ -313,7 +280,6 @@ jobs:
     name: Collect All Native Libraries
     needs:
       - build-windows
-      - build-windows-arm64
       - build-macos
       - build-linux-x64
       - build-linux-arm64-native
