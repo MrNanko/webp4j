@@ -274,6 +274,7 @@ target_include_directories(gif PUBLIC ${GIFLIB_SOURCE_DIR})
       webp
       sharpyuv
       libwebpmux
+      webpdemux
   )
 
   # Link giflib if available

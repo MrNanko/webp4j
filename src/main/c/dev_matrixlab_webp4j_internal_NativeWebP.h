@@ -103,6 +103,14 @@ JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encod
 JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeAnimatedWebP
   (JNIEnv *, jclass, jobjectArray, jintArray, jint, jint, jfloat, jboolean, jint, jint, jint, jint, jboolean, jboolean);
 
+/*
+ * Class:     dev_matrixlab_webp4j_internal_NativeWebP
+ * Method:    decodeAnimatedWebP
+ * Signature: ([BLdev/matrixlab/webp4j/model/AnimatedWebPData;)Z
+ */
+JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_decodeAnimatedWebP
+  (JNIEnv *, jclass, jbyteArray, jobject);
+
 #ifdef __cplusplus
 }
 #endif

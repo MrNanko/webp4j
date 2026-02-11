@@ -4,6 +4,7 @@
 #include <webp/encode.h>
 #include <webp/decode.h>
 #include <webp/mux.h>
+#include <webp/demux.h>
 #include "dev_matrixlab_webp4j_internal_NativeWebP.h"
 
 #ifdef HAVE_GIFLIB
@@ -1090,4 +1091,155 @@ JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encod
     WebPAnimEncoderDelete(enc);
 
     return result;
+}
+
+/*
+ * Class:     NativeWebP
+ * Method:    decodeAnimatedWebP
+ * Signature: ([BLdev/matrixlab/webp4j/model/AnimatedWebPData;)Z
+ *
+ * This JNI function decodes an animated WebP image into individual frames
+ * using the libwebp WebPAnimDecoder API.
+ *
+ * It extracts all frames as RGBA byte arrays along with their cumulative
+ * timestamps, and populates the Java AnimatedWebPData object.
+ *
+ * Parameters:
+ * - webPData: A Java byte array containing the animated WebP image data.
+ * - result: A Java AnimatedWebPData object to populate with decoded data.
+ *
+ * Returns:
+ * - true (JNI_TRUE) if decoding is successful.
+ * - false (JNI_FALSE) if decoding fails.
+ */
+JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_decodeAnimatedWebP
+  (JNIEnv *env, jclass clazz, jbyteArray webPData, jobject result) {
+
+    // Get WebP data from Java byte array
+    jsize data_size = (*env)->GetArrayLength(env, webPData);
+    jbyte* webp_bytes = (*env)->GetByteArrayElements(env, webPData, NULL);
+    if (webp_bytes == NULL) {
+        return JNI_FALSE;
+    }
+
+    // Create WebPData structure
+    WebPData webp_data;
+    webp_data.bytes = (const uint8_t*)webp_bytes;
+    webp_data.size = (size_t)data_size;
+
+    // Initialize decoder with default options (MODE_RGBA)
+    WebPAnimDecoderOptions dec_options;
+    if (!WebPAnimDecoderOptionsInit(&dec_options)) {
+        (*env)->ReleaseByteArrayElements(env, webPData, webp_bytes, JNI_ABORT);
+        return JNI_FALSE;
+    }
+    // MODE_RGBA is the default, no need to set explicitly
+
+    WebPAnimDecoder* dec = WebPAnimDecoderNew(&webp_data, &dec_options);
+    if (dec == NULL) {
+        (*env)->ReleaseByteArrayElements(env, webPData, webp_bytes, JNI_ABORT);
+        return JNI_FALSE;
+    }
+
+    // Get animation info
+    WebPAnimInfo anim_info;
+    if (!WebPAnimDecoderGetInfo(dec, &anim_info)) {
+        WebPAnimDecoderDelete(dec);
+        (*env)->ReleaseByteArrayElements(env, webPData, webp_bytes, JNI_ABORT);
+        return JNI_FALSE;
+    }
+
+    uint32_t canvas_width = anim_info.canvas_width;
+    uint32_t canvas_height = anim_info.canvas_height;
+    uint32_t frame_count = anim_info.frame_count;
+    size_t frame_size = canvas_width * canvas_height * 4;  // RGBA
+
+    // Create Java arrays for frame data and timestamps
+    jclass byteArrayClass = (*env)->FindClass(env, "[B");
+    if (byteArrayClass == NULL) {
+        WebPAnimDecoderDelete(dec);
+        (*env)->ReleaseByteArrayElements(env, webPData, webp_bytes, JNI_ABORT);
+        return JNI_FALSE;
+    }
+
+    jobjectArray frameDataArray = (*env)->NewObjectArray(env, (jsize)frame_count, byteArrayClass, NULL);
+    if (frameDataArray == NULL) {
+        WebPAnimDecoderDelete(dec);
+        (*env)->ReleaseByteArrayElements(env, webPData, webp_bytes, JNI_ABORT);
+        return JNI_FALSE;
+    }
+
+    jintArray timestampsArray = (*env)->NewIntArray(env, (jsize)frame_count);
+    if (timestampsArray == NULL) {
+        WebPAnimDecoderDelete(dec);
+        (*env)->ReleaseByteArrayElements(env, webPData, webp_bytes, JNI_ABORT);
+        return JNI_FALSE;
+    }
+
+    // Decode all frames
+    uint32_t frame_index = 0;
+    while (WebPAnimDecoderHasMoreFrames(dec) && frame_index < frame_count) {
+        uint8_t* buf;
+        int timestamp;
+
+        if (!WebPAnimDecoderGetNext(dec, &buf, &timestamp)) {
+            WebPAnimDecoderDelete(dec);
+            (*env)->ReleaseByteArrayElements(env, webPData, webp_bytes, JNI_ABORT);
+            return JNI_FALSE;
+        }
+
+        // Copy frame data to a new Java byte array (buf is owned by decoder)
+        jbyteArray frameBytes = (*env)->NewByteArray(env, (jsize)frame_size);
+        if (frameBytes == NULL) {
+            WebPAnimDecoderDelete(dec);
+            (*env)->ReleaseByteArrayElements(env, webPData, webp_bytes, JNI_ABORT);
+            return JNI_FALSE;
+        }
+
+        (*env)->SetByteArrayRegion(env, frameBytes, 0, (jsize)frame_size, (jbyte*)buf);
+        (*env)->SetObjectArrayElement(env, frameDataArray, (jsize)frame_index, frameBytes);
+        (*env)->DeleteLocalRef(env, frameBytes);
+
+        // Store timestamp
+        jint ts = (jint)timestamp;
+        (*env)->SetIntArrayRegion(env, timestampsArray, (jsize)frame_index, 1, &ts);
+
+        frame_index++;
+    }
+
+    // Clean up decoder
+    WebPAnimDecoderDelete(dec);
+    (*env)->ReleaseByteArrayElements(env, webPData, webp_bytes, JNI_ABORT);
+
+    // Populate the AnimatedWebPData Java object
+    jclass resultClass = (*env)->GetObjectClass(env, result);
+    if (resultClass == NULL) {
+        return JNI_FALSE;
+    }
+
+    // Get field IDs
+    jfieldID fidCanvasWidth = (*env)->GetFieldID(env, resultClass, "canvasWidth", "I");
+    jfieldID fidCanvasHeight = (*env)->GetFieldID(env, resultClass, "canvasHeight", "I");
+    jfieldID fidLoopCount = (*env)->GetFieldID(env, resultClass, "loopCount", "I");
+    jfieldID fidBgcolor = (*env)->GetFieldID(env, resultClass, "bgcolor", "I");
+    jfieldID fidFrameCount = (*env)->GetFieldID(env, resultClass, "frameCount", "I");
+    jfieldID fidRawFrameData = (*env)->GetFieldID(env, resultClass, "rawFrameData", "[[B");
+    jfieldID fidTimestamps = (*env)->GetFieldID(env, resultClass, "timestamps", "[I");
+
+    if (fidCanvasWidth == NULL || fidCanvasHeight == NULL || fidLoopCount == NULL ||
+        fidBgcolor == NULL || fidFrameCount == NULL || fidRawFrameData == NULL ||
+        fidTimestamps == NULL) {
+        return JNI_FALSE;
+    }
+
+    // Set fields
+    (*env)->SetIntField(env, result, fidCanvasWidth, (jint)canvas_width);
+    (*env)->SetIntField(env, result, fidCanvasHeight, (jint)canvas_height);
+    (*env)->SetIntField(env, result, fidLoopCount, (jint)anim_info.loop_count);
+    (*env)->SetIntField(env, result, fidBgcolor, (jint)anim_info.bgcolor);
+    (*env)->SetIntField(env, result, fidFrameCount, (jint)frame_index);
+    (*env)->SetObjectField(env, result, fidRawFrameData, frameDataArray);
+    (*env)->SetObjectField(env, result, fidTimestamps, timestampsArray);
+
+    return JNI_TRUE;
 }

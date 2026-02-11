@@ -1,0 +1,97 @@
+package dev.matrixlab.webp4j.animation;
+
+import dev.matrixlab.webp4j.internal.NativeWebP;
+import dev.matrixlab.webp4j.internal.PixelConverter;
+import dev.matrixlab.webp4j.model.AnimatedWebPData;
+import dev.matrixlab.webp4j.model.AnimatedWebPFrame;
+
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+/**
+ * Decoder for extracting individual frames from animated WebP images.
+ * <p>
+ * This class uses the libwebp WebPAnimDecoder API to decode animated WebP
+ * images into individual frames as BufferedImage objects with their timestamps.
+ * <p>
+ * Example usage:
+ * <pre>{@code
+ * byte[] webPData = Files.readAllBytes(Paths.get("animation.webp"));
+ * AnimatedWebPData result = AnimatedWebPDecoder.decode(webPData);
+ * for (AnimatedWebPFrame frame : result.getFrames()) {
+ *     BufferedImage image = frame.getImage();
+ *     int timestamp = frame.getTimestamp();
+ * }
+ * int[] delays = result.getDelays(); // per-frame delays in ms
+ * }</pre>
+ *
+ * @author MrNanko
+ */
+public final class AnimatedWebPDecoder {
+
+    private AnimatedWebPDecoder() {
+        throw new AssertionError("Cannot instantiate utility class.");
+    }
+
+    /**
+     * Decodes an animated WebP image into individual frames.
+     * <p>
+     * Each frame is a fully composited canvas-sized RGBA BufferedImage.
+     * The returned {@link AnimatedWebPData} contains all frames with their
+     * timestamps, as well as animation metadata (canvas size, loop count, etc.).
+     *
+     * @param webPData Byte array containing the animated WebP image data
+     * @return AnimatedWebPData containing all decoded frames and metadata
+     * @throws IOException              If decoding fails
+     * @throws IllegalArgumentException If webPData is null or empty
+     */
+    public static AnimatedWebPData decode(byte[] webPData) throws IOException {
+        if (webPData == null || webPData.length == 0) {
+            throw new IllegalArgumentException("The input WebP data cannot be null or empty.");
+        }
+
+        // Create result container for native layer to populate
+        AnimatedWebPData result = new AnimatedWebPData();
+
+        // Decode using native WebPAnimDecoder
+        boolean success = NativeWebP.decodeAnimatedWebP(webPData, result);
+        if (!success) {
+            throw new IOException("Failed to decode animated WebP image.");
+        }
+
+        // Convert raw RGBA byte arrays to BufferedImage frames
+        byte[][] rawFrameData = result.getRawFrameData();
+        int[] timestamps = result.getTimestamps();
+
+        if (rawFrameData == null || timestamps == null) {
+            throw new IOException("Native decoder returned incomplete data.");
+        }
+
+        int canvasWidth = result.getCanvasWidth();
+        int canvasHeight = result.getCanvasHeight();
+
+        List<AnimatedWebPFrame> frames = new ArrayList<>(rawFrameData.length);
+        try {
+            for (int i = 0; i < rawFrameData.length; i++) {
+                BufferedImage image = PixelConverter.toBufferedImage(canvasWidth, canvasHeight, rawFrameData[i]);
+                frames.add(new AnimatedWebPFrame(image, timestamps[i]));
+            }
+        } finally {
+            // Clear raw frame data to free memory
+            for (byte[] frame : rawFrameData) {
+                if (frame != null) {
+                    Arrays.fill(frame, (byte) 0);
+                }
+            }
+            // Remove references to raw data
+            result.setRawFrameData(null);
+            result.setTimestamps(null);
+        }
+
+        result.setFrames(frames);
+        return result;
+    }
+}

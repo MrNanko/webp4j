@@ -1,5 +1,6 @@
 package dev.matrixlab.webp4j.internal;
 
+import dev.matrixlab.webp4j.model.AnimatedWebPData;
 import dev.matrixlab.webp4j.model.AnimationInfo;
 import dev.matrixlab.webp4j.model.WebPBitstreamFeatures;
 
@@ -136,6 +137,23 @@ public class NativeWebP {
             boolean minimizeSize,
             boolean allowMixed
     );
+
+    /**
+     * Decodes an animated WebP image into individual frames.
+     * <p>
+     * Uses the libwebp WebPAnimDecoder API to extract all frames as RGBA data
+     * along with their cumulative timestamps.
+     * <p>
+     * The result object will have its fields populated:
+     * - canvasWidth, canvasHeight, loopCount, bgcolor, frameCount (metadata)
+     * - rawFrameData (byte[][] of RGBA frame data)
+     * - timestamps (int[] of cumulative timestamps in milliseconds)
+     *
+     * @param webPData The animated WebP image data
+     * @param result   AnimatedWebPData object to populate with decoded frames
+     * @return true on success, false on failure
+     */
+    public static native boolean decodeAnimatedWebP(byte[] webPData, AnimatedWebPData result);
 
     /**
      * Checks if the native library has been successfully loaded.
