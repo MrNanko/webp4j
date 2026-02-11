@@ -58,6 +58,48 @@ jobs:
         retention-days: 7
 
   # ============================================
+  # Windows ARM64 Build
+  # ============================================
+  build-windows-arm64:
+    runs-on: windows-11-arm
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: ${{ env.JAVA_VERSION }}
+
+    - name: Setup MinGW (CLANGARM64)
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: CLANGARM64
+        update: true
+        install: >-
+          mingw-w64-clang-aarch64-clang
+          mingw-w64-clang-aarch64-cmake
+          mingw-w64-clang-aarch64-make
+
+    - name: Build
+      shell: msys2 {0}
+      run: |
+        mkdir build && cd build
+        cmake -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release ..
+        mingw32-make -j$(nproc)
+        mingw32-make install
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: webp4j-windows-aarch64
+        path: src/main/resources/native/webp4j-windows-aarch64.dll
+        retention-days: 7
+
+  # ============================================
   # macOS Build (matrix for x64 and arm64)
   # ============================================
   build-macos:
@@ -271,6 +313,7 @@ jobs:
     name: Collect All Native Libraries
     needs:
       - build-windows
+      - build-windows-arm64
       - build-macos
       - build-linux-x64
       - build-linux-arm64-native

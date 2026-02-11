@@ -34,7 +34,9 @@ jobs:
       matrix:
         include:
           - os: windows-latest
-            platform: windows
+            platform: windows-x64
+          - os: windows-11-arm
+            platform: windows-arm64
           - os: macos-15-intel
             platform: mac-x64
           - os: macos-latest

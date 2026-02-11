@@ -374,12 +374,13 @@ target_include_directories(gif PUBLIC ${GIFLIB_SOURCE_DIR})
   # Set output filename (naming convention)
   # Pattern: ${LIB_PREFIX}webp4j-${PLATFORM_NAME}-${ARCH_NAME}.${LIB_EXTENSION}
   # Examples:
-  #   Windows x64   -> webp4j-windows-x64.dll
-  #   Linux x64     -> libwebp4j-linux-x64.so
-  #   Linux aarch64 -> libwebp4j-linux-aarch64.so
-  #   Linux arm     -> libwebp4j-linux-arm.so
-  #   macOS x64     -> libwebp4j-mac-x64.dylib
-  #   macOS arm64   -> libwebp4j-mac-arm64.dylib
+  #   Windows x64     -> webp4j-windows-x64.dll
+  #   Windows aarch64 -> webp4j-windows-aarch64.dll
+  #   Linux x64       -> libwebp4j-linux-x64.so
+  #   Linux aarch64   -> libwebp4j-linux-aarch64.so
+  #   Linux arm       -> libwebp4j-linux-arm.so
+  #   macOS x64       -> libwebp4j-mac-x64.dylib
+  #   macOS arm64     -> libwebp4j-mac-arm64.dylib
   set(LIB_SUFFIX "-${PLATFORM_NAME}-${ARCH_NAME}.${LIB_EXTENSION}")
   set_target_properties(webp4j PROPERTIES
       PREFIX "${LIB_PREFIX}"
