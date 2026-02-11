@@ -3,9 +3,7 @@ package dev.matrixlab.webp4j;
 import dev.matrixlab.webp4j.gif.GifToWebPConfig;
 import dev.matrixlab.webp4j.gif.GifToWebPConverter;
 import dev.matrixlab.webp4j.internal.NativeWebP;
-import dev.matrixlab.webp4j.model.AnimationInfo;
-import dev.matrixlab.webp4j.model.VP8StatusCode;
-import dev.matrixlab.webp4j.model.WebPBitstreamFeatures;
+import dev.matrixlab.webp4j.model.*;
 import org.junit.jupiter.api.Test;
 
 import javax.imageio.ImageIO;
@@ -561,6 +559,109 @@ class WebP4jTest {
         // Save to file for manual inspection
         try (FileOutputStream fos = new FileOutputStream(OUTPUT_ANIMATED_WEBP_DEFAULT)) {
             fos.write(webPData);
+        }
+    }
+
+    /**
+     * Test method for decoding animated WebP back into individual frames.
+     * This is a round-trip test: create animated WebP -> decode -> verify frames.
+     */
+    @Test
+    void testDecodeAnimatedWebP() throws IOException {
+        // Create programmatic frames (simple colored rectangles)
+        int width = 200;
+        int height = 200;
+        int frameCount = 5;
+        List<BufferedImage> frames = new ArrayList<>();
+        int[] delays = new int[frameCount];
+
+        // Generate frames with different colors
+        Color[] colors = {Color.RED, Color.GREEN, Color.BLUE, Color.YELLOW, Color.MAGENTA};
+        for (int i = 0; i < frameCount; i++) {
+            BufferedImage frame = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g2d = frame.createGraphics();
+            g2d.setColor(colors[i]);
+            g2d.fillRect(0, 0, width, height);
+            g2d.dispose();
+            frames.add(frame);
+            delays[i] = 100;  // 100ms per frame
+        }
+
+        // Create animated WebP
+        byte[] webPData = WebPCodec.createAnimatedWebP(frames, delays, null);
+        assertNotNull(webPData, "Animated WebP data should not be null");
+        assertTrue(webPData.length > 0, "Animated WebP data should not be empty");
+
+        // Decode animated WebP back into frames
+        AnimatedWebPData decoded = WebPCodec.decodeAnimatedWebP(webPData);
+        assertNotNull(decoded, "Decoded data should not be null");
+
+        // Verify metadata
+        assertEquals(width, decoded.getCanvasWidth(), "Canvas width should match");
+        assertEquals(height, decoded.getCanvasHeight(), "Canvas height should match");
+        assertEquals(frameCount, decoded.getFrameCount(), "Frame count should match");
+
+        // Verify frames
+        List<AnimatedWebPFrame> decodedFrames = decoded.getFrames();
+        assertNotNull(decodedFrames, "Decoded frames list should not be null");
+        assertEquals(frameCount, decodedFrames.size(), "Decoded frame count should match");
+
+        // Verify each frame has correct dimensions
+        for (int i = 0; i < decodedFrames.size(); i++) {
+            AnimatedWebPFrame frame = decodedFrames.get(i);
+            assertNotNull(frame.getImage(), "Frame " + i + " image should not be null");
+            assertEquals(width, frame.getImage().getWidth(), "Frame " + i + " width should match canvas");
+            assertEquals(height, frame.getImage().getHeight(), "Frame " + i + " height should match canvas");
+            assertTrue(frame.getImage().getColorModel().hasAlpha(), "Frame " + i + " should have alpha channel");
+        }
+
+        // Verify per-frame delays
+        int[] decodedDelays = decoded.getDelays();
+        assertNotNull(decodedDelays, "Decoded delays should not be null");
+        assertEquals(frameCount, decodedDelays.length, "Delays array length should match frame count");
+        for (int i = 0; i < decodedDelays.length; i++) {
+            assertEquals(100, decodedDelays[i], "Frame " + i + " delay should be 100ms");
+        }
+
+        // Save decoded frames as PNG for manual inspection
+        for (int i = 0; i < decodedFrames.size(); i++) {
+            ImageIO.write(decodedFrames.get(i).getImage(), FORMAT_PNG,
+                    new File(TEST_OUTPUT_DIR + "decoded_anim_frame_" + i + ".png"));
+        }
+    }
+
+    /**
+     * Test method for decoding animated WebP from a GIF-converted source.
+     */
+    @Test
+    void testDecodeAnimatedWebPFromGif() throws IOException {
+        // Load GIF and convert to animated WebP
+        byte[] gifData = Files.readAllBytes(Paths.get(SOURCE_GIF));
+        byte[] webPData = WebPCodec.encodeGifToWebP(gifData);
+        assertNotNull(webPData, "WebP data should not be null");
+
+        // Verify it's animated
+        WebPBitstreamFeatures features = new WebPBitstreamFeatures();
+        int status = NativeWebP.getFeatures(webPData, webPData.length, features);
+        assertEquals(VP8StatusCode.VP8_STATUS_OK, VP8StatusCode.getStatusCode(status));
+        assertTrue(features.isHasAnimation(), "Should be animated");
+
+        // Decode the animated WebP
+        AnimatedWebPData decoded = WebPCodec.decodeAnimatedWebP(webPData);
+        assertNotNull(decoded, "Decoded data should not be null");
+        assertTrue(decoded.getFrameCount() > 0, "Should have at least one frame");
+        assertTrue(decoded.getCanvasWidth() > 0, "Canvas width should be positive");
+        assertTrue(decoded.getCanvasHeight() > 0, "Canvas height should be positive");
+
+        List<AnimatedWebPFrame> decodedFrames = decoded.getFrames();
+        assertEquals(decoded.getFrameCount(), decodedFrames.size(), "Frame count should match");
+
+        // Save first and last decoded frames for inspection
+        if (!decodedFrames.isEmpty()) {
+            ImageIO.write(decodedFrames.get(0).getImage(), FORMAT_PNG,
+                    new File(TEST_OUTPUT_DIR + "decoded_gif_webp_frame_0.png"));
+            ImageIO.write(decodedFrames.get(decodedFrames.size() - 1).getImage(), FORMAT_PNG,
+                    new File(TEST_OUTPUT_DIR + "decoded_gif_webp_frame_last.png"));
         }
     }
 

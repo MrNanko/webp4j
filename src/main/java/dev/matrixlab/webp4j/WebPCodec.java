@@ -1,10 +1,12 @@
 package dev.matrixlab.webp4j;
 
+import dev.matrixlab.webp4j.animation.AnimatedWebPDecoder;
 import dev.matrixlab.webp4j.animation.AnimatedWebPEncoder;
 import dev.matrixlab.webp4j.gif.GifToWebPConfig;
 import dev.matrixlab.webp4j.gif.GifToWebPConverter;
 import dev.matrixlab.webp4j.internal.NativeWebP;
 import dev.matrixlab.webp4j.internal.PixelConverter;
+import dev.matrixlab.webp4j.model.AnimatedWebPData;
 import dev.matrixlab.webp4j.model.AnimationInfo;
 import dev.matrixlab.webp4j.model.VP8StatusCode;
 import dev.matrixlab.webp4j.model.WebPBitstreamFeatures;
@@ -332,6 +334,42 @@ public final class WebPCodec {
      */
     public static byte[] createAnimatedWebP(List<BufferedImage> frames, int[] delays, GifToWebPConfig config) throws IOException {
         return AnimatedWebPEncoder.encode(frames, delays, config);
+    }
+
+    // ============================================
+    // Animated WebP Decoding (Delegate to AnimatedWebPDecoder)
+    // ============================================
+
+    /**
+     * Decodes an animated WebP image into individual frames.
+     * <p>
+     * This method extracts all frames from an animated WebP as BufferedImage
+     * objects along with their timestamps and animation metadata.
+     * <p>
+     * Each frame is a fully composited canvas-sized RGBA image.
+     * <p>
+     * Example usage:
+     * <pre>{@code
+     * byte[] webPData = Files.readAllBytes(Paths.get("animation.webp"));
+     * AnimatedWebPData result = WebPCodec.decodeAnimatedWebP(webPData);
+     *
+     * // Access individual frames
+     * for (AnimatedWebPFrame frame : result.getFrames()) {
+     *     BufferedImage image = frame.getImage();
+     *     int timestamp = frame.getTimestamp();
+     * }
+     *
+     * // Get per-frame delays
+     * int[] delays = result.getDelays();
+     * }</pre>
+     *
+     * @param webPData Byte array containing the animated WebP image data
+     * @return AnimatedWebPData containing all decoded frames and animation metadata
+     * @throws IOException              If decoding fails
+     * @throws IllegalArgumentException If webPData is null or empty
+     */
+    public static AnimatedWebPData decodeAnimatedWebP(byte[] webPData) throws IOException {
+        return AnimatedWebPDecoder.decode(webPData);
     }
 
 }
