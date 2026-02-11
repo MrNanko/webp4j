@@ -16,16 +16,17 @@ jobs:
   # Windows Build (matrix for x64 and arm64)
   # ============================================
   build-windows:
-    runs-on: ${{ matrix.runner }}
+    name: build-windows (${{ matrix.os }}, ${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         include:
-          - arch: x64
-            runner: windows-latest
+          - os: windows-latest
+            arch: x64
             msystem: MINGW64
             packages: mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-make
-          - arch: aarch64
-            runner: windows-11-arm
+          - os: windows-11-arm
+            arch: aarch64
             msystem: CLANGARM64
             packages: mingw-w64-clang-aarch64-clang mingw-w64-clang-aarch64-cmake mingw-w64-clang-aarch64-make
     steps:
