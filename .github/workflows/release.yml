@@ -125,7 +125,7 @@ jobs:
           ## WebP4j Release
 
           ### What's Changed
-          - **Animated WebP decoding** - Extract individual frames (`BufferedImage`) and delays from existing animated WebP files via `WebPCodec.decodeAnimatedWebP()`.
+          - **Windows ARM64 support** - Added native build for Windows aarch64 using MSYS2 CLANGARM64 toolchain.
 
           ### Installation
 
@@ -145,6 +145,7 @@ jobs:
 
           ### Supported Platforms
           - Windows x64
+          - Windows ARM64 (aarch64)
           - macOS x64 (Intel)
           - macOS arm64 (Apple Silicon)
           - Linux x64
