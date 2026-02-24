@@ -105,11 +105,21 @@ jobs:
         retention-days: 7
 
   # ============================================
-  # Linux Build (x64 native)
+  # Linux Build (matrix for x64 and aarch64)
   # ============================================
-  build-linux-x64:
-    name: build-linux (x64)
-    runs-on: ubuntu-22.04
+  build-linux:
+    name: build-linux (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: x64
+            artifact-path: src/main/resources/native/libwebp4j-linux-x64.so
+          - runner: self-hosted
+            arch: aarch64
+            artifact-path: src/main/resources/native/libwebp4j-linux-aarch64.so
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -137,141 +147,8 @@ jobs:
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
-        name: webp4j-linux-x64
-        path: src/main/resources/native/libwebp4j-linux-x64.so
-        retention-days: 7
-
-  # ============================================
-  # Linux ARM64 Build - Native (Priority: Self-hosted)
-  # ============================================
-  build-linux-arm64-native:
-    name: build-linux (aarch64, native)
-    runs-on: self-hosted
-    timeout-minutes: 15
-    continue-on-error: true  # Allow fallback to QEMU if self-hosted not available
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-
-    - name: Setup Java
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: ${{ env.JAVA_VERSION }}
-
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential cmake
-
-    - name: Build (Native ARM64)
-      run: |
-        mkdir build && cd build
-        cmake -DCMAKE_BUILD_TYPE=Release ..
-        make -j$(nproc)
-        make install
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: webp4j-linux-aarch64
-        path: src/main/resources/native/libwebp4j-linux-aarch64.so
-        retention-days: 7
-
-  # ============================================
-  # Linux ARM64 Build - QEMU (Fallback)
-  # ============================================
-  build-linux-arm64-qemu:
-    name: build-linux (aarch64, qemu)
-    runs-on: ubuntu-22.04
-    needs: build-linux-arm64-native
-    if: failure() || cancelled()  # Run only if native build fails or is cancelled
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-
-    - name: Setup QEMU
-      uses: docker/setup-qemu-action@v3
-      with:
-        platforms: arm64
-
-    - name: Build on ARM64 (QEMU Emulation)
-      uses: uraimo/run-on-arch-action@v2
-      with:
-        arch: aarch64
-        distro: ubuntu22.04
-        githubToken: ${{ github.token }}
-        install: |
-          apt-get update -q -y
-          apt-get install -q -y build-essential cmake openjdk-21-jdk git
-        run: |
-          export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-arm64
-          export PATH="${JAVA_HOME}/bin:${PATH}"
-          export WEBP4J_QEMU_BUILD=1
-          git config --global --add safe.directory /home/runner/work/webp4j/webp4j
-          git config --global --add safe.directory /home/runner/work/webp4j/webp4j/libwebp
-          git submodule update --init --recursive
-          rm -rf build
-          mkdir build && cd build
-          cmake -DCMAKE_BUILD_TYPE=Release ..
-          make -j1
-          make install
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: webp4j-linux-aarch64
-        path: src/main/resources/native/libwebp4j-linux-aarch64.so
-        retention-days: 7
-
-  # ============================================
-  # Linux ARM32 Build (QEMU emulation)
-  # ============================================
-  build-linux-arm32:
-    name: build-linux (arm, qemu)
-    runs-on: ubuntu-22.04
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-
-    - name: Setup QEMU
-      uses: docker/setup-qemu-action@v3
-      with:
-        platforms: arm
-
-    - name: Build on ARM32
-      uses: uraimo/run-on-arch-action@v2
-      with:
-        arch: armv7
-        distro: ubuntu22.04
-        githubToken: ${{ github.token }}
-        install: |
-          apt-get update -q -y
-          apt-get install -q -y build-essential cmake openjdk-21-jdk git
-        run: |
-          export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-armhf
-          export PATH="${JAVA_HOME}/bin:${PATH}"
-          export WEBP4J_QEMU_BUILD=1
-          git config --global --add safe.directory /home/runner/work/webp4j/webp4j
-          git config --global --add safe.directory /home/runner/work/webp4j/webp4j/libwebp
-          git submodule update --init --recursive
-          rm -rf build
-          mkdir build && cd build
-          cmake -DCMAKE_BUILD_TYPE=Release ..
-          make -j$(nproc)
-          make install
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: webp4j-linux-arm
-        path: src/main/resources/native/libwebp4j-linux-arm.so
+        name: webp4j-linux-${{ matrix.arch }}
+        path: ${{ matrix.artifact-path }}
         retention-days: 7
 
   # ============================================
@@ -282,10 +159,7 @@ jobs:
     needs:
       - build-windows
       - build-macos
-      - build-linux-x64
-      - build-linux-arm64-native
-      - build-linux-arm64-qemu
-      - build-linux-arm32
+      - build-linux
     runs-on: ubuntu-latest
     if: always()  # Run even if some builds fail or are skipped
 

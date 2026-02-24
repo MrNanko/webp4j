@@ -70,7 +70,7 @@ static void ClearCanvas(uint8_t* canvas, int width, int height, uint32_t bgcolor
     uint8_t b = bgcolor & 0xFF;
     uint8_t a = (bgcolor >> 24) & 0xFF;
 
-    for (int i = 0; i < width * height; i++) {
+    for (size_t i = 0; i < (size_t)width * height; i++) {
         canvas[i * 4 + 0] = r;
         canvas[i * 4 + 1] = g;
         canvas[i * 4 + 2] = b;
@@ -80,7 +80,7 @@ static void ClearCanvas(uint8_t* canvas, int width, int height, uint32_t bgcolor
 
 // Copy canvas region
 static void CopyCanvas(uint8_t* dst, const uint8_t* src, int width, int height) {
-    memcpy(dst, src, width * height * 4);
+    memcpy(dst, src, (size_t)width * height * 4);
 }
 
 // Render GIF frame onto canvas
@@ -150,7 +150,7 @@ GifDecodeResult* DecodeGifFromMemory(const uint8_t* data, size_t data_size) {
     result->has_transparency = 0;
 
     // Allocate canvas buffers
-    int canvas_size = result->canvas_width * result->canvas_height * 4;
+    size_t canvas_size = (size_t)result->canvas_width * result->canvas_height * 4;
     uint8_t* canvas = (uint8_t*)malloc(canvas_size);
     uint8_t* prev_canvas = (uint8_t*)malloc(canvas_size);
 
@@ -179,9 +179,10 @@ GifDecodeResult* DecodeGifFromMemory(const uint8_t* data, size_t data_size) {
                 break;
             }
             // Skip raster data
-            uint8_t* raster = (uint8_t*)malloc(gif->Image.Width * gif->Image.Height);
+            size_t raster_skip_size = (size_t)gif->Image.Width * gif->Image.Height;
+            uint8_t* raster = (uint8_t*)malloc(raster_skip_size);
             if (raster) {
-                DGifGetLine(gif, raster, gif->Image.Width * gif->Image.Height);
+                DGifGetLine(gif, raster, raster_skip_size);
                 free(raster);
             }
         } else if (record_type == EXTENSION_RECORD_TYPE) {
@@ -236,7 +237,7 @@ GifDecodeResult* DecodeGifFromMemory(const uint8_t* data, size_t data_size) {
             }
 
             // Allocate raster buffer
-            int raster_size = gif->Image.Width * gif->Image.Height;
+            size_t raster_size = (size_t)gif->Image.Width * gif->Image.Height;
             uint8_t* raster = (uint8_t*)malloc(raster_size);
             if (raster == NULL) {
                 break;
@@ -404,9 +405,10 @@ int GetGifInfo(const uint8_t* data, size_t data_size,
             }
 
             // Skip raster data
-            uint8_t* raster = (uint8_t*)malloc(gif->Image.Width * gif->Image.Height);
+            size_t raster_skip_size = (size_t)gif->Image.Width * gif->Image.Height;
+            uint8_t* raster = (uint8_t*)malloc(raster_skip_size);
             if (raster) {
-                DGifGetLine(gif, raster, gif->Image.Width * gif->Image.Height);
+                DGifGetLine(gif, raster, raster_skip_size);
                 free(raster);
             }
 

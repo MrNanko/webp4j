@@ -30,7 +30,7 @@ public class NativeLibraryLoader {
                         String.format("Native library not found: %s%n" +
                                         "OS: %s, Architecture: %s%n" +
                                         "Expected path: %s%n" +
-                                        "Supported platforms: Linux (x64/aarch64/arm), macOS (x64/arm64), Windows (x64/aarch64)",
+                                        "Supported platforms: Linux (x64/aarch64), macOS (x64/arm64), Windows (x64/aarch64)",
                                 libraryFileName, os, arch, resourcePath)
                 );
             }
@@ -104,7 +104,6 @@ public class NativeLibraryLoader {
         //   Windows aarch64 -> webp4j-windows-aarch64.dll
         //   Linux x64       -> libwebp4j-linux-x64.so
         //   Linux aarch64   -> libwebp4j-linux-aarch64.so
-        //   Linux arm       -> libwebp4j-linux-arm.so
         //   macOS x64       -> libwebp4j-mac-x64.dylib
         //   macOS arm64     -> libwebp4j-mac-arm64.dylib
 
@@ -131,11 +130,6 @@ public class NativeLibraryLoader {
         // ARM 64-bit handling
         if (arch.contains("aarch64") || arch.equals("arm64")) {
             return isMac ? "arm64" : "aarch64";  // macOS uses arm64; Linux/Windows uses aarch64
-        }
-
-        // ARM 32-bit handling (e.g., Raspberry Pi)
-        if (arch.contains("arm")) {
-            return "arm";
         }
 
         // Keep other architectures as-is
