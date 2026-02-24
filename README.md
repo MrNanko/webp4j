@@ -37,7 +37,7 @@ WebP4j supports the following platforms through automated CI/CD builds:
 
 - **Windows**: x64 (x86-64) and ARM64 (aarch64)
 - **macOS**: x64 (Intel) and arm64 (Apple Silicon)
-- **Linux**: x64 (x86-64), ARM64 (aarch64), and ARM32 (armv7)
+- **Linux**: x64 (x86-64) and ARM64 (aarch64)
 
 ## Installation
 
@@ -49,14 +49,14 @@ WebP4j supports the following platforms through automated CI/CD builds:
 <dependency>
     <groupId>dev.matrixlab.webp4j</groupId>
     <artifactId>webp4j-core</artifactId>
-    <version>2.1.0</version>
+    <version>2.1.1</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```groovy
-implementation 'dev.matrixlab.webp4j:webp4j-core:2.1.0'
+implementation 'dev.matrixlab.webp4j:webp4j-core:2.1.1'
 ```
 
 ### Upgrading from 1.x

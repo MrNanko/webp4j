@@ -108,7 +108,7 @@ jobs:
   # Linux Build (matrix for x64 and aarch64)
   # ============================================
   build-linux:
-    name: build-linux (${{ matrix.arch }})
+    name: build-linux (${{ matrix.os }}, ${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     strategy:

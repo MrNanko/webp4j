@@ -125,7 +125,8 @@ jobs:
           ## WebP4j Release
 
           ### What's Changed
-          - **Windows ARM64 support** - Added native build for Windows aarch64 using MSYS2 CLANGARM64 toolchain.
+          - **Security fix** - Fixed heap buffer overflow vulnerability in GIF decoder caused by integer overflow (Issue #6).
+          - **Dropped ARM32 support** - Removed Linux ARM32 (armv7) platform support.
 
           ### Installation
 
@@ -149,7 +150,6 @@ jobs:
           - macOS x64 (Intel)
           - macOS arm64 (Apple Silicon)
           - Linux x64
-          - Linux aarch64 (ARM64)
-          - Linux arm (ARM32)
+          - Linux ARM64 (aarch64)
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
