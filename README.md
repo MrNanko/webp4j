@@ -1,6 +1,6 @@
 # WebP4j
 
-**WebP4j** is a Java library based on JNI (Java Native Interface) that supports WebP image encoding/decoding, GIF to WebP conversion, and animated WebP creation with both lossless and lossy compression. This project utilizes Google's [libwebp](https://developers.google.com/speed/webp) library (version 1.6.0) and exposes its functionality to Java applications.
+**WebP4j** is a Java library based on JNI (Java Native Interface) that supports WebP image encoding/decoding with both lossless and lossy compression, GIF to WebP conversion, and animated WebP creation and decoding. This project utilizes Google's [libwebp](https://developers.google.com/speed/webp) library (version 1.6.0) and exposes its functionality to Java applications.
 
 ## Features
 
@@ -58,15 +58,6 @@ WebP4j supports the following platforms through automated CI/CD builds:
 ```groovy
 implementation 'dev.matrixlab.webp4j:webp4j-core:2.1.1'
 ```
-
-### Upgrading from 1.x
-
-v2.0 introduces **animated WebP decoding** (extract frames and delays from animated WebP files) and includes the following breaking changes:
-
-| | 1.x | 2.x |
-|---|---|---|
-| **Group ID** | `dev.matrixlab` | `dev.matrixlab.webp4j` |
-| **Artifact ID** | `webp4j` | `webp4j-core` |
 
 ## API Overview
 
