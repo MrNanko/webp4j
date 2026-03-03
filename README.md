@@ -1,5 +1,7 @@
 # WebP4j
 
+##### 📖 English Documentation | 📖 [中文文档](README.zh-CN.md)
+
 **WebP4j** is a Java library based on JNI (Java Native Interface) that supports WebP image encoding/decoding with both lossless and lossy compression, GIF to WebP conversion, and animated WebP creation and decoding. This project utilizes Google's [libwebp](https://developers.google.com/speed/webp) library (version 1.6.0) and exposes its functionality to Java applications.
 
 ## Features
@@ -121,14 +123,14 @@ int getLoopCount();
 
 ```java
 // Normalize frames to common size (use FrameNormalizer directly)
-List<BufferedImage> FrameNormalizer.normalize(List<BufferedImage> frames);
-List<BufferedImage> FrameNormalizer.normalize(
-    List<BufferedImage> frames,
-    Integer targetWidth,
-    Integer targetHeight,
-    FitMode fitMode,
-    boolean allowUpscale,
-    Color background
+List<BufferedImage> normalize(List<BufferedImage> frames);
+List<BufferedImage> normalize(
+        List<BufferedImage> frames,
+        Integer targetWidth,
+        Integer targetHeight,
+        FitMode fitMode,
+        boolean allowUpscale,
+        Color background
 );
 ```
 
