@@ -125,8 +125,8 @@ jobs:
           ## WebP4j Release
 
           ### What's Changed
-          - **Security fix** - Fixed heap buffer overflow vulnerability in GIF decoder caused by integer overflow (Issue #6).
-          - **Dropped ARM32 support** - Removed Linux ARM32 (armv7) platform support.
+          - **JPMS module support** — Added `module-info.java` via Multi-Release JAR (`dev.matrixlab.webp4j.core`), enabling scoped `--enable-native-access` on Java 22+ instead of `ALL-UNNAMED` (#7).
+          - **Java 22+ native access documentation** — Added guidance for suppressing JEP 472 warnings on both classpath and module path.
 
           ### Installation
 
