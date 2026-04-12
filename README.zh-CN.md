@@ -41,6 +41,30 @@ WebP4j 通过自动化 CI/CD 构建支持以下平台：
 - **macOS**：x64（Intel）和 arm64（Apple Silicon）
 - **Linux**：x64（x86-64）和 ARM64（aarch64）
 
+## Java 22+ 原生访问说明
+
+从 Java 22 开始，JVM 在库通过 JNI 加载原生代码时会发出警告（[JEP 472](https://openjdk.org/jeps/472)）。由于 WebP4j 内部使用了 JNI，你可能会看到以下警告：
+
+```
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by dev.matrixlab.webp4j.internal.NativeLibraryLoader in an unnamed module
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+```
+
+**如何消除警告：**
+
+- **模块路径**（推荐）：WebP4j 以 Multi-Release JAR 形式提供命名模块 `dev.matrixlab.webp4j.core`。将 JAR 放到模块路径上并使用：
+  ```
+  --module-path webp4j-core.jar --add-modules dev.matrixlab.webp4j.core --enable-native-access=dev.matrixlab.webp4j.core
+  ```
+- **类路径**：如果使用传统类路径，模块名不会被识别，需使用通配标志：
+  ```
+  --enable-native-access=ALL-UNNAMED
+  ```
+
+> 该警告不会影响功能 —— WebP4j 在两种情况下均可正常工作。这只是提示性信息，直到未来某个 Java 版本将原生访问限制设为强制。
+
 ## 安装
 
 ### Maven
@@ -51,14 +75,14 @@ WebP4j 通过自动化 CI/CD 构建支持以下平台：
 <dependency>
     <groupId>dev.matrixlab.webp4j</groupId>
     <artifactId>webp4j-core</artifactId>
-    <version>2.1.1</version>
+    <version>2.2.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```groovy
-implementation 'dev.matrixlab.webp4j:webp4j-core:2.1.1'
+implementation 'dev.matrixlab.webp4j:webp4j-core:2.2.0'
 ```
 
 ## API 概览

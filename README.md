@@ -41,6 +41,30 @@ WebP4j supports the following platforms through automated CI/CD builds:
 - **macOS**: x64 (Intel) and arm64 (Apple Silicon)
 - **Linux**: x64 (x86-64) and ARM64 (aarch64)
 
+## Java 22+ Native Access Note
+
+Starting from Java 22, the JVM warns when libraries load native code via JNI ([JEP 472](https://openjdk.org/jeps/472)). Since WebP4j uses JNI internally, you may see the following warning:
+
+```
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by dev.matrixlab.webp4j.internal.NativeLibraryLoader in an unnamed module
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+```
+
+**How to suppress the warning:**
+
+- **Module path** (recommended): WebP4j ships as a Multi-Release JAR with a named module `dev.matrixlab.webp4j.core`. Place the JAR on the module path and use:
+  ```
+  --module-path webp4j-core.jar --add-modules dev.matrixlab.webp4j.core --enable-native-access=dev.matrixlab.webp4j.core
+  ```
+- **Classpath**: If you use the traditional classpath, the module name is not recognized. Use the blanket flag instead:
+  ```
+  --enable-native-access=ALL-UNNAMED
+  ```
+
+> This warning does not affect functionality — WebP4j works correctly in both cases. It is purely informational until a future Java release makes native access restrictions mandatory.
+
 ## Installation
 
 ### Maven
@@ -51,14 +75,14 @@ WebP4j supports the following platforms through automated CI/CD builds:
 <dependency>
     <groupId>dev.matrixlab.webp4j</groupId>
     <artifactId>webp4j-core</artifactId>
-    <version>2.1.1</version>
+    <version>2.2.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```groovy
-implementation 'dev.matrixlab.webp4j:webp4j-core:2.1.1'
+implementation 'dev.matrixlab.webp4j:webp4j-core:2.2.0'
 ```
 
 ## API Overview

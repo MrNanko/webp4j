@@ -4,7 +4,7 @@
 
   <groupId>dev.matrixlab.webp4j</groupId>
   <artifactId>webp4j-core</artifactId>
-  <version>2.1.1</version>
+  <version>2.2.0</version>
   <packaging>jar</packaging>
 
   <name>webp4j</name>
@@ -54,6 +54,37 @@
         <version>3.11.0</version>
         <configuration>
           <release>8</release>
+        </configuration>
+        <executions>
+          <execution>
+            <id>compile-java9</id>
+            <phase>compile</phase>
+            <goals>
+              <goal>compile</goal>
+            </goals>
+            <configuration>
+              <release>9</release>
+              <compileSourceRoots>
+                <compileSourceRoot>${project.basedir}/src/main/java9</compileSourceRoot>
+              </compileSourceRoots>
+              <multiReleaseOutput>true</multiReleaseOutput>
+              <compilerArgs>
+                <arg>--module-version=${project.version}</arg>
+              </compilerArgs>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.1</version>
+        <configuration>
+          <archive>
+            <manifestEntries>
+              <Multi-Release>true</Multi-Release>
+            </manifestEntries>
+          </archive>
         </configuration>
       </plugin>
       <plugin>
