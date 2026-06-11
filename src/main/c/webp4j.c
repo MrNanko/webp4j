@@ -12,1234 +12,699 @@
 #endif
 
 /*
- * Utility function to convert a Java byte array to a native uint8_t array.
+ * Pixels cross the JNI boundary as Java ARGB ints (0xAARRGGBB). This binding
+ * requires a little-endian target so that those ints are BGRA in byte order,
+ * matching libwebp's WebPPictureImportBGRA/BGRX, WebPDecodeBGRAInto and
+ * MODE_BGRA entry points with no conversion pass. All release platforms
+ * (win/mac/linux, x64/aarch64) are little-endian; there is no big-endian path.
  */
-uint8_t* jByteArrayToUint8(JNIEnv *env, jbyteArray array) {
-    jsize len = (*env)->GetArrayLength(env, array);
-    jbyte* data = (*env)->GetByteArrayElements(env, array, 0);
-    if (data == NULL) {
-        return NULL;  // Failed to get byte array
-    }
-
-    uint8_t* result = (uint8_t*) malloc(len * sizeof(uint8_t));
-    if (result == NULL) {
-        (*env)->ReleaseByteArrayElements(env, array, data, JNI_ABORT);
-        return NULL;  // Memory allocation failed
-    }
-
-    for (int i = 0; i < len; i++) {
-        result[i] = (uint8_t) data[i];
-    }
-
-    (*env)->ReleaseByteArrayElements(env, array, data, JNI_ABORT);
-    return result;
-}
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__)
+#error "webp4j requires a little-endian target (Java ARGB int == BGRA bytes)"
+#endif
 
 /*
- * Free the native uint8_t array.
+ * Critical-section rule: between GetPrimitiveArrayCritical and the matching
+ * ReleasePrimitiveArrayCritical there must be NO other JNI calls and no
+ * unbounded blocking, and every early-return path must release in reverse
+ * acquisition order. Long-running work (WebPEncode, WebPAnimEncoderAdd, the
+ * giflib scan) is kept outside critical sections; the one exception is
+ * decodeInto, where decoding directly into the pinned Java array IS the
+ * zero-copy.
  */
-void freeUint8(uint8_t* ptr) {
-    if (ptr) {
-        free(ptr);
+
+/* ---------------------------------------------------------------------------
+ * Cached classes and field IDs (initialized once in JNI_OnLoad).
+ * The global class refs keep the jfieldIDs valid for the library's lifetime.
+ * ------------------------------------------------------------------------- */
+
+static jclass g_features_class;        /* dev.matrixlab.webp4j.model.WebPBitstreamFeatures */
+static jfieldID g_features_width;
+static jfieldID g_features_height;
+static jfieldID g_features_has_alpha;
+static jfieldID g_features_has_animation;
+static jfieldID g_features_format;
+
+static jclass g_anim_info_class;       /* dev.matrixlab.webp4j.model.AnimationInfo */
+static jfieldID g_anim_info_width;
+static jfieldID g_anim_info_height;
+static jfieldID g_anim_info_frame_count;
+static jfieldID g_anim_info_loop_count;
+static jfieldID g_anim_info_has_transparency;
+
+static jclass g_anim_data_class;       /* dev.matrixlab.webp4j.model.AnimatedWebPData */
+static jfieldID g_anim_data_canvas_width;
+static jfieldID g_anim_data_canvas_height;
+static jfieldID g_anim_data_loop_count;
+static jfieldID g_anim_data_bgcolor;
+static jfieldID g_anim_data_frame_count;
+static jfieldID g_anim_data_frame_pixels;
+static jfieldID g_anim_data_timestamps;
+
+static jclass g_int_array_class;       /* int[] */
+
+static jclass CacheClass(JNIEnv* env, const char* name) {
+    jclass local = (*env)->FindClass(env, name);
+    if (local == NULL) {
+        return NULL;
     }
+    jclass global = (jclass)(*env)->NewGlobalRef(env, local);
+    (*env)->DeleteLocalRef(env, local);
+    return global;
 }
 
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void* reserved) {
+    JNIEnv* env;
+    if ((*vm)->GetEnv(vm, (void**)&env, JNI_VERSION_1_8) != JNI_OK) {
+        return JNI_ERR;
+    }
+
+    g_features_class = CacheClass(env, "dev/matrixlab/webp4j/model/WebPBitstreamFeatures");
+    g_anim_info_class = CacheClass(env, "dev/matrixlab/webp4j/model/AnimationInfo");
+    g_anim_data_class = CacheClass(env, "dev/matrixlab/webp4j/model/AnimatedWebPData");
+    g_int_array_class = CacheClass(env, "[I");
+    if (g_features_class == NULL || g_anim_info_class == NULL ||
+        g_anim_data_class == NULL || g_int_array_class == NULL) {
+        return JNI_ERR;
+    }
+
+    g_features_width         = (*env)->GetFieldID(env, g_features_class, "width", "I");
+    g_features_height        = (*env)->GetFieldID(env, g_features_class, "height", "I");
+    g_features_has_alpha     = (*env)->GetFieldID(env, g_features_class, "hasAlpha", "Z");
+    g_features_has_animation = (*env)->GetFieldID(env, g_features_class, "hasAnimation", "Z");
+    g_features_format        = (*env)->GetFieldID(env, g_features_class, "format", "I");
+
+    g_anim_info_width            = (*env)->GetFieldID(env, g_anim_info_class, "width", "I");
+    g_anim_info_height           = (*env)->GetFieldID(env, g_anim_info_class, "height", "I");
+    g_anim_info_frame_count      = (*env)->GetFieldID(env, g_anim_info_class, "frameCount", "I");
+    g_anim_info_loop_count       = (*env)->GetFieldID(env, g_anim_info_class, "loopCount", "I");
+    g_anim_info_has_transparency = (*env)->GetFieldID(env, g_anim_info_class, "hasTransparency", "Z");
+
+    g_anim_data_canvas_width  = (*env)->GetFieldID(env, g_anim_data_class, "canvasWidth", "I");
+    g_anim_data_canvas_height = (*env)->GetFieldID(env, g_anim_data_class, "canvasHeight", "I");
+    g_anim_data_loop_count    = (*env)->GetFieldID(env, g_anim_data_class, "loopCount", "I");
+    g_anim_data_bgcolor       = (*env)->GetFieldID(env, g_anim_data_class, "bgcolor", "I");
+    g_anim_data_frame_count   = (*env)->GetFieldID(env, g_anim_data_class, "frameCount", "I");
+    g_anim_data_frame_pixels  = (*env)->GetFieldID(env, g_anim_data_class, "framePixels", "[[I");
+    g_anim_data_timestamps    = (*env)->GetFieldID(env, g_anim_data_class, "timestamps", "[I");
+
+    if (g_features_width == NULL || g_features_height == NULL ||
+        g_features_has_alpha == NULL || g_features_has_animation == NULL ||
+        g_features_format == NULL ||
+        g_anim_info_width == NULL || g_anim_info_height == NULL ||
+        g_anim_info_frame_count == NULL || g_anim_info_loop_count == NULL ||
+        g_anim_info_has_transparency == NULL ||
+        g_anim_data_canvas_width == NULL || g_anim_data_canvas_height == NULL ||
+        g_anim_data_loop_count == NULL || g_anim_data_bgcolor == NULL ||
+        g_anim_data_frame_count == NULL || g_anim_data_frame_pixels == NULL ||
+        g_anim_data_timestamps == NULL) {
+        return JNI_ERR;
+    }
+
+    return JNI_VERSION_1_8;
+}
+
+JNIEXPORT void JNICALL JNI_OnUnload(JavaVM* vm, void* reserved) {
+    JNIEnv* env;
+    if ((*vm)->GetEnv(vm, (void**)&env, JNI_VERSION_1_8) != JNI_OK) {
+        return;
+    }
+    if (g_features_class != NULL)  (*env)->DeleteGlobalRef(env, g_features_class);
+    if (g_anim_info_class != NULL) (*env)->DeleteGlobalRef(env, g_anim_info_class);
+    if (g_anim_data_class != NULL) (*env)->DeleteGlobalRef(env, g_anim_data_class);
+    if (g_int_array_class != NULL) (*env)->DeleteGlobalRef(env, g_int_array_class);
+}
+
+/* ---------------------------------------------------------------------------
+ * Probes
+ * ------------------------------------------------------------------------- */
+
 /*
- * Class:     dev_matrixlab_webp4j_internal_NativeWebP
- * Method:    getLibWebPVersion
- * Signature: ()I
- *
- * Smoke test function that returns the libwebp version number.
- * This verifies that:
- * 1. The native library loaded successfully
- * 2. JNI bindings are working correctly
- * 3. libwebp functions are callable
+ * Smoke test: verifies the library loaded, the JNI bindings link, and libwebp
+ * is callable. Invoked from NativeWebP's static initializer.
  */
 JNIEXPORT jint JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_getLibWebPVersion
-  (JNIEnv *env, jclass cls) {
+  (JNIEnv *env, jclass clazz) {
     return (jint) WebPGetEncoderVersion();
 }
 
 /*
- * Class:     NativeWebP
- * Method:    getInfo
- * Signature: ([B[I)Z
- *
- * This JNI function retrieves the width and height of a WebP image.
- * It uses the libwebp function WebPGetFeatures to extract the image dimensions
- * from the input byte array and stores them in a Java integer array.
- *
- * Parameters:
- * - data: A Java byte array containing the WebP image data.
- * - dimensions: A Java integer array to store the width and height of the image.
- *
- * The function performs the following steps:
- * 1. Converts the input Java byte array to a native uint8_t array.
- * 2. Calls the WebPGetFeatures function to extract the image dimensions.
- * 3. Stores the width and height in the provided Java integer array.
- * 4. Releases the native resources and returns success or failure.
- *
- * Returns:
- * - true (JNI_TRUE) if the operation is successful.
- * - false (JNI_FALSE) if the operation fails.
+ * Retrieves width/height of a WebP image into dimensions[0..1].
  */
 JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_getInfo
   (JNIEnv *env, jclass clazz, jbyteArray data, jintArray dimensions) {
-
-    // Convert Java byte array to native uint8_t array
-    jbyte* webp_data = (*env)->GetByteArrayElements(env, data, NULL);
-    if (webp_data == NULL) {
-        return JNI_FALSE;  // Failed to convert byte array
+    jsize data_size = (*env)->GetArrayLength(env, data);
+    if ((*env)->GetArrayLength(env, dimensions) < 2) {
+        return JNI_FALSE;
     }
 
-    // Retrieve the length of the WebP data
-    jsize data_size = (*env)->GetArrayLength(env, data);
-
-    // Declare width and height variables
-    int width = 0;
-    int height = 0;
-
-    // WebP feature structure
     WebPBitstreamFeatures features;
-
-    // Use WebPGetFeatures to retrieve the width and height of the WebP image
+    jbyte* webp_data = (*env)->GetPrimitiveArrayCritical(env, data, NULL);
+    if (webp_data == NULL) {
+        return JNI_FALSE;
+    }
     VP8StatusCode status = WebPGetFeatures((const uint8_t*)webp_data, (size_t)data_size, &features);
+    (*env)->ReleasePrimitiveArrayCritical(env, data, webp_data, JNI_ABORT);
 
     if (status != VP8_STATUS_OK) {
-        (*env)->ReleaseByteArrayElements(env, data, webp_data, JNI_ABORT);
-        return JNI_FALSE;  // Failed to get WebP features
+        return JNI_FALSE;
     }
 
-    // Set width and height
-    width = features.width;
-    height = features.height;
-
-    // Get the dimensions array from Java
-    jint* dims = (*env)->GetIntArrayElements(env, dimensions, NULL);
-    if (dims == NULL) {
-        (*env)->ReleaseByteArrayElements(env, data, webp_data, JNI_ABORT);
-        return JNI_FALSE;  // Failed to get int array
-    }
-
-    // Store the width and height in the dimensions array
-    dims[0] = width;
-    dims[1] = height;
-
-    // Release the dimensions array and the WebP data
-    (*env)->ReleaseIntArrayElements(env, dimensions, dims, 0);
-    (*env)->ReleaseByteArrayElements(env, data, webp_data, JNI_ABORT);
-
-    return JNI_TRUE;  // Success
+    jint dims[2] = { (jint)features.width, (jint)features.height };
+    (*env)->SetIntArrayRegion(env, dimensions, 0, 2, dims);
+    return JNI_TRUE;
 }
 
 /*
- * Class:     NativeWebP
- * Method:    getFeatures
- * Signature: ([BI LWebPBitstreamFeatures;)I
- *
- * This JNI function wraps the libwebp function WebPGetFeatures.
- * It extracts WebP bitstream features from the input byte array and populates
- * a Java WebPBitstreamFeatures object with the extracted values.
- *
- * Parameters:
- * - data: A Java byte array containing the WebP image data.
- * - dataSize: The size of the WebP image data in bytes.
- * - featuresObj: A Java object of type WebPBitstreamFeatures to store the extracted features.
- *
- * The function performs the following steps:
- * 1. Retrieves the WebP image data from the input Java byte array.
- * 2. Calls the WebPGetFeatures function to extract the bitstream features.
- * 3. Maps the extracted features to the fields of the Java WebPBitstreamFeatures object.
- * 4. Releases the input byte array.
- *
- * Returns:
- * - VP8_STATUS_OK (0) if the operation is successful.
- * - A non-zero error code if the operation fails.
+ * Extracts WebP bitstream features into a WebPBitstreamFeatures object.
+ * Returns the VP8StatusCode from WebPGetFeatures (0 = OK).
  */
 JNIEXPORT jint JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_getFeatures
   (JNIEnv *env, jclass clazz, jbyteArray data, jint dataSize, jobject featuresObj) {
-
-    // Retrieve the pointer to the input byte array.
-    jbyte* webpData = (*env)->GetByteArrayElements(env, data, NULL);
-    if (webpData == NULL) {
-        // Failed to get byte array elements; return an error code.
+    WebPBitstreamFeatures features;
+    jbyte* webp_data = (*env)->GetPrimitiveArrayCritical(env, data, NULL);
+    if (webp_data == NULL) {
         return -1;
     }
+    int status = WebPGetFeatures((const uint8_t*)webp_data, (size_t)dataSize, &features);
+    (*env)->ReleasePrimitiveArrayCritical(env, data, webp_data, JNI_ABORT);
 
-    // Initialize the C structure to hold bitstream features.
-    WebPBitstreamFeatures cFeatures;
-    int status = WebPGetFeatures((const uint8_t*)webpData, (size_t)dataSize, &cFeatures);
-
-    // Release the input array; use JNI_ABORT as we do not need to copy back modifications.
-    (*env)->ReleaseByteArrayElements(env, data, webpData, JNI_ABORT);
-
-    // If WebPGetFeatures did not succeed, return the error status.
     if (status != VP8_STATUS_OK) {
         return status;
     }
 
-    // Obtain the Java class of the features object.
-    jclass featuresClass = (*env)->GetObjectClass(env, featuresObj);
-    if (featuresClass == NULL) {
-        return status;
-    }
-
-    // Get the field IDs for the expected fields in the Java WebPBitstreamFeatures class.
-    // Assuming the Java class defines the fields: int width, int height, boolean hasAlpha,
-    // boolean hasAnimation, and int format.
-    jfieldID fidWidth       = (*env)->GetFieldID(env, featuresClass, "width", "I");
-    jfieldID fidHeight      = (*env)->GetFieldID(env, featuresClass, "height", "I");
-    jfieldID fidHasAlpha    = (*env)->GetFieldID(env, featuresClass, "hasAlpha", "Z");
-    jfieldID fidHasAnimation= (*env)->GetFieldID(env, featuresClass, "hasAnimation", "Z");
-    jfieldID fidFormat      = (*env)->GetFieldID(env, featuresClass, "format", "I");
-
-    // Check that all field IDs are successfully obtained.
-    if (fidWidth == NULL || fidHeight == NULL || fidHasAlpha == NULL || fidHasAnimation == NULL || fidFormat == NULL) {
-        // Optionally, we can throw an exception here.
-        return status;
-    }
-
-    // Write the values from the C structure into the Java object's fields.
-    (*env)->SetIntField(env, featuresObj, fidWidth, cFeatures.width);
-    (*env)->SetIntField(env, featuresObj, fidHeight, cFeatures.height);
-    (*env)->SetBooleanField(env, featuresObj, fidHasAlpha, cFeatures.has_alpha ? JNI_TRUE : JNI_FALSE);
-    (*env)->SetBooleanField(env, featuresObj, fidHasAnimation, cFeatures.has_animation ? JNI_TRUE : JNI_FALSE);
-    (*env)->SetIntField(env, featuresObj, fidFormat, cFeatures.format);
-
-    // Return the status code from WebPGetFeatures.
+    (*env)->SetIntField(env, featuresObj, g_features_width, features.width);
+    (*env)->SetIntField(env, featuresObj, g_features_height, features.height);
+    (*env)->SetBooleanField(env, featuresObj, g_features_has_alpha,
+                            features.has_alpha ? JNI_TRUE : JNI_FALSE);
+    (*env)->SetBooleanField(env, featuresObj, g_features_has_animation,
+                            features.has_animation ? JNI_TRUE : JNI_FALSE);
+    (*env)->SetIntField(env, featuresObj, g_features_format, features.format);
     return status;
 }
 
+/* ---------------------------------------------------------------------------
+ * Static image encode/decode
+ * ------------------------------------------------------------------------- */
+
 /*
- * Class:     NativeWebP
- * Method:    encodeRGB
- * Signature: ([BIII F)[B
+ * Encodes packed ARGB pixels (BGRA bytes on LE) to a WebP bitstream.
  *
- * This JNI function wraps the libwebp function WebPEncodeRGB.
- * It encodes an RGB image provided as a byte array into the WebP format.
+ * Mirrors the flow of libwebp's simple-API Encode() (picture_enc.c) so the
+ * output is identical to WebPEncodeBGRA/WebPEncodeLosslessBGRA: preset
+ * DEFAULT, lossless preset quality 70, pic.use_argb = lossless.
  *
- * Parameters:
- * - image: A Java byte array containing the RGB image data.
- * - width: The width of the image in pixels.
- * - height: The height of the image in pixels.
- * - stride: The number of bytes per row in the image.
- * - quality: A float value representing the quality factor for encoding (0 to 100).
- *
- * The function performs the following steps:
- * 1. Converts the Java byte array to a native uint8_t array.
- * 2. Calls the WebPEncodeRGB function to encode the image into WebP format.
- * 3. Creates a new Java byte array to store the encoded WebP data.
- * 4. Copies the encoded data into the Java byte array and returns it.
- *
- * Returns:
- * - A Java byte array containing the encoded WebP image, or NULL if encoding fails.
+ * The only work inside the critical section is the single linear import pass;
+ * the expensive WebPEncode runs after the array is released, so GC is never
+ * blocked during compression.
  */
-JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeRGB
-  (JNIEnv *env, jclass clazz, jbyteArray image, jint width, jint height, jint stride, jfloat quality) {
-
-    // Convert Java byte array to native uint8_t array
-    uint8_t* rgb = jByteArrayToUint8(env, image);
-    if (rgb == NULL) {
-        return NULL;  // Failed to convert byte array
+JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encode
+  (JNIEnv *env, jclass clazz, jintArray pixels, jint width, jint height,
+   jfloat quality, jboolean lossless, jboolean hasAlpha) {
+    if (width <= 0 || height <= 0 ||
+        (jlong)(*env)->GetArrayLength(env, pixels) != (jlong)width * height) {
+        return NULL;
     }
 
-    // Output buffer
-    uint8_t* output = NULL;
+    WebPConfig config;
+    if (!WebPConfigPreset(&config, WEBP_PRESET_DEFAULT, lossless ? 70.f : quality)) {
+        return NULL;
+    }
+    config.lossless = lossless ? 1 : 0;
 
-    // Call WebPEncodeRGB function
-    size_t output_size = WebPEncodeRGB(rgb, width, height, stride, quality, &output);
+    WebPPicture pic;
+    if (!WebPPictureInit(&pic)) {
+        return NULL;
+    }
+    pic.use_argb = lossless ? 1 : 0;
+    pic.width = width;
+    pic.height = height;
 
-    // Free the input RGB array
-    freeUint8(rgb);
+    WebPMemoryWriter wrt;
+    WebPMemoryWriterInit(&wrt);
+    pic.writer = WebPMemoryWrite;
+    pic.custom_ptr = &wrt;
 
-    // Check if encoding was successful
-    if (output_size == 0 || output == NULL) {
-        return NULL;  // Encoding failed
+    jint* p = (*env)->GetPrimitiveArrayCritical(env, pixels, NULL);
+    int ok = 0;
+    if (p != NULL) {
+        ok = hasAlpha
+            ? WebPPictureImportBGRA(&pic, (const uint8_t*)p, width * 4)
+            : WebPPictureImportBGRX(&pic, (const uint8_t*)p, width * 4);
+        (*env)->ReleasePrimitiveArrayCritical(env, pixels, p, JNI_ABORT);
     }
 
-    // Create a new Java byte array for the output
-    jbyteArray result = (*env)->NewByteArray(env, output_size);
-    if (result == NULL) {
-        WebPFree(output);  // Ensure the output buffer is freed
-        return NULL;  // Memory allocation failed
+    ok = ok && WebPEncode(&config, &pic);
+    WebPPictureFree(&pic);
+
+    jbyteArray result = NULL;
+    if (ok && wrt.size > 0) {
+        result = (*env)->NewByteArray(env, (jsize)wrt.size);
+        if (result != NULL) {
+            (*env)->SetByteArrayRegion(env, result, 0, (jsize)wrt.size, (const jbyte*)wrt.mem);
+        }
     }
-
-    // Copy the encoded output to the Java byte array
-    (*env)->SetByteArrayRegion(env, result, 0, output_size, (jbyte*) output);
-
-    // Free the WebP output
-    WebPFree(output);
-
-    // Return the result
+    WebPMemoryWriterClear(&wrt);
     return result;
 }
 
 /*
- * Class:     NativeWebP
- * Method:    encodeRGBA
- * Signature: ([BIII F)[B
+ * Decodes a WebP bitstream directly into a packed ARGB int[].
  *
- * This JNI function wraps the libwebp function WebPEncodeRGBA.
- * It encodes an RGBA image provided as a Java byte array into the WebP format.
- * The method takes the following parameters:
- * - image: A Java byte array containing the RGBA image data.
- * - width: The width of the image in pixels.
- * - height: The height of the image in pixels.
- * - stride: The number of bytes per row in the image.
- * - quality: A float value representing the quality factor for encoding (0 to 100).
- *
- * The function performs the following steps:
- * 1. Converts the Java byte array to a native uint8_t array.
- * 2. Calls the WebPEncodeRGBA function to encode the image into WebP format.
- * 3. Creates a new Java byte array to store the encoded WebP data.
- * 4. Copies the encoded data into the Java byte array and returns it.
- *
- * Returns:
- * - A Java byte array containing the encoded WebP image, or NULL if encoding fails.
+ * Zero-copy: libwebp writes BGRA bytes straight into the pinned Java array,
+ * which is typically the backing store of the BufferedImage being returned.
+ * Both arrays stay pinned across the whole decode — the accepted cost; for
+ * extreme image sizes this can delay GC for the duration of the decode.
+ * Nested criticals are legal here because no other JNI call happens between
+ * acquisition and release.
  */
-JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeRGBA
-  (JNIEnv *env, jclass clazz, jbyteArray image, jint width, jint height, jint stride, jfloat quality) {
-
-    // Convert Java byte array to native uint8_t array
-    uint8_t* rgba = jByteArrayToUint8(env, image);
-    if (rgba == NULL) {
-        return NULL;  // Failed to convert byte array
-    }
-
-    // Output buffer
-    uint8_t* output = NULL;
-
-    // Call WebPEncodeRGBA function
-    size_t output_size = WebPEncodeRGBA(rgba, width, height, stride, quality, &output);
-
-    // Free the input RGBA array
-    freeUint8(rgba);
-
-    // Check if encoding was successful
-    if (output_size == 0 || output == NULL) {
-        return NULL;  // Encoding failed
-    }
-
-    // Create a new Java byte array for the output
-    jbyteArray result = (*env)->NewByteArray(env, output_size);
-    if (result == NULL) {
-        WebPFree(output);  // Ensure the output buffer is freed
-        return NULL;  // Memory allocation failed
-    }
-
-    // Copy the encoded output to the Java byte array
-    (*env)->SetByteArrayRegion(env, result, 0, output_size, (jbyte*) output);
-
-    // Free the WebP output
-    WebPFree(output);
-
-    // Return the result
-    return result;
-}
-
-/*
- * Class:     NativeWebP
- * Method:    encodeLosslessRGB
- * Signature: ([BIII)[B
- *
- * This JNI function wraps the libwebp function WebPEncodeLosslessRGB.
- * It encodes an RGB image provided as a byte array into the lossless WebP format.
- *
- * Parameters:
- * - image: A Java byte array containing the RGB image data.
- * - width: The width of the image in pixels.
- * - height: The height of the image in pixels.
- * - stride: The number of bytes per row in the image.
- *
- * The function performs the following steps:
- * 1. Converts the Java byte array to a native uint8_t array.
- * 2. Calls the WebPEncodeLosslessRGB function to encode the image into lossless WebP format.
- * 3. Creates a new Java byte array to store the encoded WebP data.
- * 4. Copies the encoded data into the Java byte array and returns it.
- *
- * Returns:
- * - A Java byte array containing the encoded lossless WebP image, or NULL if encoding fails.
- */
-JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeLosslessRGB
-  (JNIEnv *env, jclass clazz, jbyteArray image, jint width, jint height, jint stride) {
-
-    // Convert Java byte array to native uint8_t array
-    uint8_t* rgb = jByteArrayToUint8(env, image);
-    if (rgb == NULL) {
-        return NULL;  // Failed to convert byte array
-    }
-
-    // Output buffer
-    uint8_t* output = NULL;
-
-    // Call WebPEncodeLosslessRGB function
-    size_t output_size = WebPEncodeLosslessRGB(rgb, width, height, stride, &output);
-
-    // Free the input RGB array
-    freeUint8(rgb);
-
-    // Check if encoding was successful
-    if (output_size == 0 || output == NULL) {
-        return NULL;  // Encoding failed
-    }
-
-    // Create a new Java byte array for the output
-    jbyteArray result = (*env)->NewByteArray(env, output_size);
-    if (result == NULL) {
-        WebPFree(output);  // Ensure the output buffer is freed
-        return NULL;  // Memory allocation failed
-    }
-
-    // Copy the encoded output to the Java byte array
-    (*env)->SetByteArrayRegion(env, result, 0, output_size, (jbyte*) output);
-
-    // Free the WebP output
-    WebPFree(output);
-
-    // Return the result
-    return result;
-}
-
-/*
- * Class:     NativeWebP
- * Method:    encodeLosslessRGBA
- * Signature: ([BIII)[B
- *
- * This JNI function wraps the libwebp function WebPEncodeLosslessRGBA.
- * It encodes an RGBA image provided as a byte array into the lossless WebP format.
- *
- * Parameters:
- * - image: A Java byte array containing the RGBA image data.
- * - width: The width of the image in pixels.
- * - height: The height of the image in pixels.
- * - stride: The number of bytes per row in the image.
- *
- * The function performs the following steps:
- * 1. Converts the Java byte array to a native uint8_t array.
- * 2. Calls the WebPEncodeLosslessRGBA function to encode the image into lossless WebP format.
- * 3. Creates a new Java byte array to store the encoded WebP data.
- * 4. Copies the encoded data into the Java byte array and returns it.
- *
- * Returns:
- * - A Java byte array containing the encoded lossless WebP image, or NULL if encoding fails.
- */
-JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeLosslessRGBA
-  (JNIEnv *env, jclass clazz, jbyteArray image, jint width, jint height, jint stride) {
-
-    // Convert Java byte array to native uint8_t array
-    uint8_t* rgba = jByteArrayToUint8(env, image);
-    if (rgba == NULL) {
-        return NULL;  // Failed to convert byte array
-    }
-
-    // Output buffer
-    uint8_t* output = NULL;
-
-    // Call WebPEncodeLosslessRGBA function
-    size_t output_size = WebPEncodeLosslessRGBA(rgba, width, height, stride, &output);
-
-    // Free the input RGBA array
-    freeUint8(rgba);
-
-    // Check if encoding was successful
-    if (output_size == 0 || output == NULL) {
-        return NULL;  // Encoding failed
-    }
-
-    // Create a new Java byte array for the output
-    jbyteArray result = (*env)->NewByteArray(env, output_size);
-    if (result == NULL) {
-        WebPFree(output);  // Ensure the output buffer is freed
-        return NULL;  // Memory allocation failed
-    }
-
-    // Copy the encoded output to the Java byte array
-    (*env)->SetByteArrayRegion(env, result, 0, output_size, (jbyte*) output);
-
-    // Free the WebP output
-    WebPFree(output);
-
-    // Return the result
-    return result;
-}
-
-/*
- * Class:     NativeWebP
- * Method:    decodeRGBInto
- * Signature: ([B[BI)Z
- *
- * This JNI function wraps the libwebp function WebPDecodeRGBInto.
- * It decodes a WebP image from a Java byte array into an RGB format and stores
- * the result in a provided output buffer.
- *
- * Parameters:
- * - data: A Java byte array containing the WebP image data.
- * - outputBuffer: A Java byte array to store the decoded RGB image.
- * - outputStride: The number of bytes per row in the output buffer.
- *
- * The function performs the following steps:
- * 1. Retrieves the WebP image data from the input Java byte array.
- * 2. Retrieves the output buffer to store the decoded RGB image.
- * 3. Calls the WebPDecodeRGBInto function to decode the WebP image into the output buffer.
- * 4. Releases the input and output buffers.
- *
- * Returns:
- * - true (JNI_TRUE) if decoding is successful.
- * - false (JNI_FALSE) if decoding fails.
- */
-JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_decodeRGBInto
-  (JNIEnv *env, jclass clazz, jbyteArray data, jbyteArray outputBuffer, jint outputStride) {
-
-    // Get data size
+JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_decodeInto
+  (JNIEnv *env, jclass clazz, jbyteArray data, jintArray output, jint outputStride) {
     jsize data_size = (*env)->GetArrayLength(env, data);
+    size_t output_size = (size_t)(*env)->GetArrayLength(env, output) * 4;
 
-    // Get webp data
-    jbyte* webp_data = (*env)->GetByteArrayElements(env, data, NULL);
-    if (webp_data == NULL) {
-        return JNI_FALSE;  // Failed to get data
+    jbyte* in = (*env)->GetPrimitiveArrayCritical(env, data, NULL);
+    if (in == NULL) {
+        return JNI_FALSE;
     }
-
-    // Get output buffer size
-    jsize output_buffer_size = (*env)->GetArrayLength(env, outputBuffer);
-
-    // Get output buffer
-    jbyte* output_buffer = (*env)->GetByteArrayElements(env, outputBuffer, NULL);
-    if (output_buffer == NULL) {
-        (*env)->ReleaseByteArrayElements(env, data, webp_data, JNI_ABORT);
+    jint* out = (*env)->GetPrimitiveArrayCritical(env, output, NULL);
+    if (out == NULL) {
+        (*env)->ReleasePrimitiveArrayCritical(env, data, in, JNI_ABORT);
         return JNI_FALSE;
     }
 
-    // Call WebPDecodeRGBInto
-    uint8_t* result = WebPDecodeRGBInto(
-        (const uint8_t*)webp_data,
-        (size_t)data_size,
-        (uint8_t*)output_buffer,
-        (int)output_buffer_size,
-        (int)outputStride
-    );
+    uint8_t* decoded = WebPDecodeBGRAInto((const uint8_t*)in, (size_t)data_size,
+                                          (uint8_t*)out, output_size, (int)outputStride);
 
-    // Release the input data
-    (*env)->ReleaseByteArrayElements(env, data, webp_data, JNI_ABORT);
+    (*env)->ReleasePrimitiveArrayCritical(env, output, out, 0);
+    (*env)->ReleasePrimitiveArrayCritical(env, data, in, JNI_ABORT);
 
-    // Release the output buffer and commit changes
-    (*env)->ReleaseByteArrayElements(env, outputBuffer, output_buffer, 0);
-
-    // Check if decoding was successful
-    if (result == NULL) {
-        return JNI_FALSE;
-    }
-
-    return JNI_TRUE;
+    return decoded != NULL ? JNI_TRUE : JNI_FALSE;
 }
 
-/*
- * Class:     NativeWebP
- * Method:    decodeRGBAInto
- * Signature: ([B[BI)Z
- *
- * This JNI function wraps the libwebp function WebPDecodeRGBAInto.
- * It decodes a WebP image from a Java byte array into an RGBA format and stores
- * the result in a provided output buffer.
- *
- * Parameters:
- * - data: A Java byte array containing the WebP image data.
- * - outputBuffer: A Java byte array to store the decoded RGBA image.
- * - outputStride: The number of bytes per row in the output buffer.
- *
- * The function performs the following steps:
- * 1. Retrieves the WebP image data from the input Java byte array.
- * 2. Retrieves the output buffer to store the decoded RGBA image.
- * 3. Calls the WebPDecodeRGBAInto function to decode the WebP image into the output buffer.
- * 4. Releases the input and output buffers.
- *
- * Returns:
- * - true (JNI_TRUE) if decoding is successful.
- * - false (JNI_FALSE) if decoding fails.
- */
-JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_decodeRGBAInto
-  (JNIEnv *env, jclass clazz, jbyteArray data, jbyteArray outputBuffer, jint outputStride) {
-
-    // Get data size
-    jsize data_size = (*env)->GetArrayLength(env, data);
-
-    // Get webp data
-    jbyte* webp_data = (*env)->GetByteArrayElements(env, data, NULL);
-    if (webp_data == NULL) {
-        return JNI_FALSE;  // Failed to get data
-    }
-
-    // Get output buffer size
-    jsize output_buffer_size = (*env)->GetArrayLength(env, outputBuffer);
-
-    // Get output buffer
-    jbyte* output_buffer = (*env)->GetByteArrayElements(env, outputBuffer, NULL);
-    if (output_buffer == NULL) {
-        (*env)->ReleaseByteArrayElements(env, data, webp_data, JNI_ABORT);
-        return JNI_FALSE;
-    }
-
-    // Call WebPDecodeRGBAInto
-    uint8_t* result = WebPDecodeRGBAInto(
-        (const uint8_t*)webp_data,
-        (size_t)data_size,
-        (uint8_t*)output_buffer,
-        (int)output_buffer_size,
-        (int)outputStride
-    );
-
-    // Release the input data
-    (*env)->ReleaseByteArrayElements(env, data, webp_data, JNI_ABORT);
-
-    // Release the output buffer and commit changes
-    (*env)->ReleaseByteArrayElements(env, outputBuffer, output_buffer, 0);
-
-    // Check if decoding was successful
-    if (result == NULL) {
-        return JNI_FALSE;
-    }
-
-    return JNI_TRUE;
-}
+/* ---------------------------------------------------------------------------
+ * GIF
+ * ------------------------------------------------------------------------- */
 
 /*
- * Class:     NativeWebP
- * Method:    getGifInfo
- * Signature: ([BLdev/matrixlab/webp4j/AnimationInfo;)Z
+ * Gets GIF metadata via giflib and populates an AnimationInfo object.
+ * Returns JNI_FALSE when giflib is unavailable, triggering the Java fallback.
  *
- * This JNI function gets information about a GIF file using native giflib.
- *
- * NOTE: This is currently a stub implementation that returns JNI_FALSE.
- *       The Java code will automatically fall back to Java ImageIO.
- *       Full giflib integration will be implemented in Phase 3-4.
- *
- * Parameters:
- * - gifData: GIF image bytes
- * - info: AnimationInfo object to populate (via JNI field access)
- *
- * Returns:
- * - True on success, false on failure (triggers Java fallback)
+ * Uses GetByteArrayElements (not a critical section): the giflib scan walks
+ * the whole file and its duration is unbounded.
  */
 JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_getGifInfo
   (JNIEnv *env, jclass clazz, jbyteArray gifData, jobject info) {
-
 #ifdef HAVE_GIFLIB
-    // Get GIF data
     jsize data_size = (*env)->GetArrayLength(env, gifData);
     jbyte* gif_bytes = (*env)->GetByteArrayElements(env, gifData, NULL);
     if (gif_bytes == NULL) {
         return JNI_FALSE;
     }
 
-    // Get GIF info
     int width, height, frame_count, loop_count, has_transparency;
-    int success = GetGifInfo((const uint8_t*)gif_bytes, data_size,
-                            &width, &height, &frame_count,
-                            &loop_count, &has_transparency);
-
+    int success = GetGifInfo((const uint8_t*)gif_bytes, (size_t)data_size,
+                             &width, &height, &frame_count,
+                             &loop_count, &has_transparency);
     (*env)->ReleaseByteArrayElements(env, gifData, gif_bytes, JNI_ABORT);
 
     if (!success) {
-        return JNI_FALSE;  // Fall back to Java
-    }
-
-    // Populate AnimationInfo fields
-    jclass infoClass = (*env)->GetObjectClass(env, info);
-    if (infoClass == NULL) {
         return JNI_FALSE;
     }
 
-    jfieldID fidWidth = (*env)->GetFieldID(env, infoClass, "width", "I");
-    jfieldID fidHeight = (*env)->GetFieldID(env, infoClass, "height", "I");
-    jfieldID fidFrameCount = (*env)->GetFieldID(env, infoClass, "frameCount", "I");
-    jfieldID fidLoopCount = (*env)->GetFieldID(env, infoClass, "loopCount", "I");
-    jfieldID fidHasTransparency = (*env)->GetFieldID(env, infoClass, "hasTransparency", "Z");
-
-    if (fidWidth == NULL || fidHeight == NULL || fidFrameCount == NULL ||
-        fidLoopCount == NULL || fidHasTransparency == NULL) {
-        return JNI_FALSE;
-    }
-
-    (*env)->SetIntField(env, info, fidWidth, width);
-    (*env)->SetIntField(env, info, fidHeight, height);
-    (*env)->SetIntField(env, info, fidFrameCount, frame_count);
-    (*env)->SetIntField(env, info, fidLoopCount, loop_count);
-    (*env)->SetBooleanField(env, info, fidHasTransparency, has_transparency ? JNI_TRUE : JNI_FALSE);
-
+    (*env)->SetIntField(env, info, g_anim_info_width, width);
+    (*env)->SetIntField(env, info, g_anim_info_height, height);
+    (*env)->SetIntField(env, info, g_anim_info_frame_count, frame_count);
+    (*env)->SetIntField(env, info, g_anim_info_loop_count, loop_count);
+    (*env)->SetBooleanField(env, info, g_anim_info_has_transparency,
+                            has_transparency ? JNI_TRUE : JNI_FALSE);
     return JNI_TRUE;
 #else
-    // giflib not available, return JNI_FALSE to trigger Java ImageIO fallback
     return JNI_FALSE;
 #endif
 }
 
+#ifdef HAVE_GIFLIB
+/* Encodes a single canvas-sized RGBA frame as a static WebP byte array. */
+static jbyteArray EncodeStaticRGBA(JNIEnv* env, const uint8_t* rgba,
+                                   int width, int height,
+                                   jfloat quality, jboolean lossless) {
+    uint8_t* output = NULL;
+    size_t output_size = lossless
+        ? WebPEncodeLosslessRGBA(rgba, width, height, width * 4, &output)
+        : WebPEncodeRGBA(rgba, width, height, width * 4, quality, &output);
+
+    if (output_size == 0 || output == NULL) {
+        return NULL;
+    }
+
+    jbyteArray result = (*env)->NewByteArray(env, (jsize)output_size);
+    if (result != NULL) {
+        (*env)->SetByteArrayRegion(env, result, 0, (jsize)output_size, (const jbyte*)output);
+    }
+    WebPFree(output);
+    return result;
+}
+#endif
+
 /*
- * Class:     NativeWebP
- * Method:    encodeGifToWebP
- * Signature: ([BFZIZIIIZZ)[B
- *
- * This JNI function converts GIF data to WebP format using native giflib decoder.
- * This is the primary (fast) path using native GIF decoding.
- *
- * Parameters:
- * - gifData: GIF image bytes
- * - quality: Quality factor (0-100)
- * - lossless: True for lossless encoding
- * - compressionMethod: Compression method (0-6)
- * - extractFirstFrameOnly: True to extract only first frame
- * - loopCount: Loop count (0=infinite, -1=use GIF's)
- * - kmin: Minimum key-frame distance
- * - kmax: Maximum key-frame distance
- * - minimizeSize: True to minimize output size
- * - allowMixed: True to allow mixed compression
- *
- * Returns:
- * - WebP encoded byte array, or NULL on failure (triggers Java fallback)
+ * Converts GIF data to WebP using the native giflib decoder (primary path).
+ * Returns NULL on any failure, triggering the Java ImageIO fallback.
  */
 JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeGifToWebP
   (JNIEnv *env, jclass clazz, jbyteArray gifData, jfloat quality,
    jboolean lossless, jint compressionMethod, jboolean extractFirstFrameOnly,
    jint loopCount, jint kmin, jint kmax, jboolean minimizeSize, jboolean allowMixed) {
-
 #ifdef HAVE_GIFLIB
-    // Get GIF data
     jsize data_size = (*env)->GetArrayLength(env, gifData);
     jbyte* gif_bytes = (*env)->GetByteArrayElements(env, gifData, NULL);
     if (gif_bytes == NULL) {
         return NULL;
     }
 
-    // Decode GIF based on mode
     if (extractFirstFrameOnly) {
-        // Decode only first frame
         int canvas_width, canvas_height;
-        GifFrame* frame = DecodeGifFirstFrame((const uint8_t*)gif_bytes, data_size,
+        GifFrame* frame = DecodeGifFirstFrame((const uint8_t*)gif_bytes, (size_t)data_size,
                                               &canvas_width, &canvas_height);
         (*env)->ReleaseByteArrayElements(env, gifData, gif_bytes, JNI_ABORT);
 
         if (frame == NULL) {
-            return NULL;  // Fall back to Java
-        }
-
-        // Encode as static WebP
-        uint8_t* output = NULL;
-        size_t output_size;
-
-        if (lossless) {
-            output_size = WebPEncodeLosslessRGBA(frame->rgba_data,
-                frame->width, frame->height, frame->width * 4, &output);
-        } else {
-            output_size = WebPEncodeRGBA(frame->rgba_data,
-                frame->width, frame->height, frame->width * 4, quality, &output);
-        }
-
-        FreeGifFrame(frame);
-
-        if (output_size == 0 || output == NULL) {
             return NULL;
         }
-
-        jbyteArray result = (*env)->NewByteArray(env, output_size);
-        if (result != NULL) {
-            (*env)->SetByteArrayRegion(env, result, 0, output_size, (jbyte*)output);
-        }
-        WebPFree(output);
+        jbyteArray result = EncodeStaticRGBA(env, frame->rgba_data,
+                                             canvas_width, canvas_height, quality, lossless);
+        FreeGifFrame(frame);
         return result;
     }
 
-    // Decode all frames for animation
-    GifDecodeResult* gif_result = DecodeGifFromMemory((const uint8_t*)gif_bytes, data_size);
+    GifDecodeResult* gif_result = DecodeGifFromMemory((const uint8_t*)gif_bytes, (size_t)data_size);
     (*env)->ReleaseByteArrayElements(env, gifData, gif_bytes, JNI_ABORT);
 
-    if (gif_result == NULL || gif_result->frame_count == 0) {
-        if (gif_result) FreeGifDecodeResult(gif_result);
-        return NULL;  // Fall back to Java
-    }
-
-    // Single frame GIF -> encode as static WebP
-    if (gif_result->frame_count == 1) {
-        uint8_t* output = NULL;
-        size_t output_size;
-
-        if (lossless) {
-            output_size = WebPEncodeLosslessRGBA(gif_result->frames[0].rgba_data,
-                gif_result->canvas_width, gif_result->canvas_height,
-                gif_result->canvas_width * 4, &output);
-        } else {
-            output_size = WebPEncodeRGBA(gif_result->frames[0].rgba_data,
-                gif_result->canvas_width, gif_result->canvas_height,
-                gif_result->canvas_width * 4, quality, &output);
-        }
-
-        FreeGifDecodeResult(gif_result);
-
-        if (output_size == 0 || output == NULL) {
-            return NULL;
-        }
-
-        jbyteArray result = (*env)->NewByteArray(env, output_size);
-        if (result != NULL) {
-            (*env)->SetByteArrayRegion(env, result, 0, output_size, (jbyte*)output);
-        }
-        WebPFree(output);
-        return result;
-    }
-
-    // Multi-frame GIF -> encode as animated WebP
-    WebPAnimEncoderOptions enc_options;
-    if (!WebPAnimEncoderOptionsInit(&enc_options)) {
-        FreeGifDecodeResult(gif_result);
+    if (gif_result == NULL) {
         return NULL;
     }
 
-    enc_options.anim_params.loop_count = (loopCount == -1) ?
-        gif_result->loop_count : loopCount;
-    // Force alpha=0 to preserve transparency in WebP output
+    if (gif_result->frame_count == 1) {
+        jbyteArray result = EncodeStaticRGBA(env, gif_result->frames[0].rgba_data,
+                                             gif_result->canvas_width, gif_result->canvas_height,
+                                             quality, lossless);
+        FreeGifDecodeResult(gif_result);
+        return result;
+    }
+
+    /* Multi-frame GIF -> animated WebP. Single cleanup tail; enc/webp_data
+     * are tracked so every failure path is provably leak-free. */
+    jbyteArray result = NULL;
+    WebPAnimEncoder* enc = NULL;
+    WebPData webp_data;
+    WebPDataInit(&webp_data);
+
+    WebPAnimEncoderOptions enc_options;
+    if (!WebPAnimEncoderOptionsInit(&enc_options)) {
+        goto cleanup;
+    }
+    enc_options.anim_params.loop_count = (loopCount == -1) ? gif_result->loop_count : loopCount;
+    /* Force alpha=0 to preserve transparency in WebP output. */
     enc_options.anim_params.bgcolor = gif_result->bgcolor & 0x00FFFFFF;
     enc_options.kmin = kmin;
     enc_options.kmax = kmax;
     enc_options.minimize_size = minimizeSize ? 1 : 0;
     enc_options.allow_mixed = allowMixed ? 1 : 0;
 
-    WebPAnimEncoder* enc = WebPAnimEncoderNew(gif_result->canvas_width,
-                                              gif_result->canvas_height,
-                                              &enc_options);
+    enc = WebPAnimEncoderNew(gif_result->canvas_width, gif_result->canvas_height, &enc_options);
     if (enc == NULL) {
-        FreeGifDecodeResult(gif_result);
-        return NULL;
+        goto cleanup;
     }
 
-    // Configure WebP encoding
     WebPConfig config;
     if (!WebPConfigInit(&config)) {
-        WebPAnimEncoderDelete(enc);
-        FreeGifDecodeResult(gif_result);
-        return NULL;
+        goto cleanup;
     }
-
     config.lossless = lossless ? 1 : 0;
     config.quality = quality;
     config.method = compressionMethod;
-
     if (!WebPValidateConfig(&config)) {
-        WebPAnimEncoderDelete(enc);
-        FreeGifDecodeResult(gif_result);
-        return NULL;
+        goto cleanup;
     }
 
-    // Add frames
     int timestamp_ms = 0;
     for (int i = 0; i < gif_result->frame_count; i++) {
         GifFrame* frame = &gif_result->frames[i];
 
         WebPPicture picture;
         if (!WebPPictureInit(&picture)) {
-            WebPAnimEncoderDelete(enc);
-            FreeGifDecodeResult(gif_result);
-            return NULL;
+            goto cleanup;
         }
-
         picture.width = gif_result->canvas_width;
         picture.height = gif_result->canvas_height;
         picture.use_argb = 1;
 
-        if (!WebPPictureAlloc(&picture)) {
+        /* WebPPictureImportRGBA allocates the picture buffer itself. */
+        if (!WebPPictureImportRGBA(&picture, frame->rgba_data, gif_result->canvas_width * 4)) {
             WebPPictureFree(&picture);
-            WebPAnimEncoderDelete(enc);
-            FreeGifDecodeResult(gif_result);
-            return NULL;
+            goto cleanup;
         }
 
-        if (!WebPPictureImportRGBA(&picture, frame->rgba_data,
-                                  frame->width * 4)) {
-            WebPPictureFree(&picture);
-            WebPAnimEncoderDelete(enc);
-            FreeGifDecodeResult(gif_result);
-            return NULL;
-        }
-
-        if (!WebPAnimEncoderAdd(enc, &picture, timestamp_ms, &config)) {
-            WebPPictureFree(&picture);
-            WebPAnimEncoderDelete(enc);
-            FreeGifDecodeResult(gif_result);
-            return NULL;
-        }
-
+        int added = WebPAnimEncoderAdd(enc, &picture, timestamp_ms, &config);
         WebPPictureFree(&picture);
+        if (!added) {
+            goto cleanup;
+        }
         timestamp_ms += frame->duration_ms;
     }
 
-    // Finalize
-    if (!WebPAnimEncoderAdd(enc, NULL, timestamp_ms, NULL)) {
-        WebPAnimEncoderDelete(enc);
-        FreeGifDecodeResult(gif_result);
-        return NULL;
+    /* Finalize (flush last frame) and assemble. */
+    if (!WebPAnimEncoderAdd(enc, NULL, timestamp_ms, NULL) ||
+        !WebPAnimEncoderAssemble(enc, &webp_data)) {
+        goto cleanup;
     }
 
-    WebPData webp_data;
-    WebPDataInit(&webp_data);
-
-    if (!WebPAnimEncoderAssemble(enc, &webp_data)) {
-        WebPAnimEncoderDelete(enc);
-        FreeGifDecodeResult(gif_result);
-        return NULL;
-    }
-
-    jbyteArray result = (*env)->NewByteArray(env, webp_data.size);
+    result = (*env)->NewByteArray(env, (jsize)webp_data.size);
     if (result != NULL) {
-        (*env)->SetByteArrayRegion(env, result, 0, webp_data.size, (jbyte*)webp_data.bytes);
+        (*env)->SetByteArrayRegion(env, result, 0, (jsize)webp_data.size, (const jbyte*)webp_data.bytes);
     }
 
+cleanup:
     WebPDataClear(&webp_data);
-    WebPAnimEncoderDelete(enc);
+    if (enc != NULL) {
+        WebPAnimEncoderDelete(enc);
+    }
     FreeGifDecodeResult(gif_result);
-
     return result;
 #else
-    // giflib not available, return NULL to trigger Java ImageIO fallback
     return NULL;
 #endif
 }
 
+/* ---------------------------------------------------------------------------
+ * Animated WebP
+ * ------------------------------------------------------------------------- */
+
 /*
- * Class:     NativeWebP
- * Method:    encodeAnimatedWebP
- * Signature: ([[B[IIIFZIIIZZZ)[B
+ * Encodes an animated WebP from packed ARGB frames (int[][]).
  *
- * This JNI function encodes animated WebP from Java-decoded GIF frames.
- * This is used when GIF is decoded by Java ImageIO (fallback path).
- *
- * Parameters:
- * - frames: Array of RGBA frame data (each frame is width * height * 4 bytes)
- * - delays: Array of frame delays in milliseconds
- * - width: Canvas width
- * - height: Canvas height
- * - quality: Quality factor (0-100)
- * - lossless: True for lossless encoding
- * - compressionMethod: Compression method (0-6)
- * - loopCount: Loop count (0=infinite)
- * - kmin: Minimum key-frame distance
- * - kmax: Maximum key-frame distance
- * - minimizeSize: True to minimize output size
- * - allowMixed: True to allow mixed compression
- *
- * Returns:
- * - A Java byte array containing the encoded animated WebP, or NULL if encoding fails.
+ * Per frame, only WebPPictureImportBGRA's single linear pass runs inside the
+ * critical section; the heavy WebPAnimEncoderAdd runs after the frame array
+ * is released. Frame arrays are read-only (JNI_ABORT) — they may be live
+ * BufferedImage backing stores.
  */
-JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeAnimatedWebP
+JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeAnimated
   (JNIEnv *env, jclass clazz, jobjectArray frames, jintArray delays, jint width, jint height,
    jfloat quality, jboolean lossless, jint compressionMethod, jint loopCount,
    jint kmin, jint kmax, jboolean minimizeSize, jboolean allowMixed) {
-
-    // 1. Get frame count
     jsize frame_count = (*env)->GetArrayLength(env, frames);
-    if (frame_count == 0) {
-        return NULL;  // No frames to encode
+    if (frame_count == 0 || width <= 0 || height <= 0 ||
+        (*env)->GetArrayLength(env, delays) < frame_count) {
+        return NULL;
     }
+    jlong expected_pixels = (jlong)width * height;
 
-    // 2. Get delays array
+    jbyteArray result = NULL;
+    WebPAnimEncoder* enc = NULL;
+    WebPData webp_data;
+    WebPDataInit(&webp_data);
+
     jint* delay_array = (*env)->GetIntArrayElements(env, delays, NULL);
     if (delay_array == NULL) {
-        return NULL;  // Failed to get delays
-    }
-
-    // 3. Initialize WebP animation encoder
-    WebPAnimEncoderOptions enc_options;
-    if (!WebPAnimEncoderOptionsInit(&enc_options)) {
-        (*env)->ReleaseIntArrayElements(env, delays, delay_array, JNI_ABORT);
         return NULL;
     }
 
+    WebPAnimEncoderOptions enc_options;
+    if (!WebPAnimEncoderOptionsInit(&enc_options)) {
+        goto cleanup;
+    }
     enc_options.anim_params.loop_count = loopCount;
-    enc_options.anim_params.bgcolor = 0x00000000;  // Transparent background
+    enc_options.anim_params.bgcolor = 0x00000000;  /* Transparent background */
     enc_options.kmin = kmin;
     enc_options.kmax = kmax;
     enc_options.minimize_size = minimizeSize ? 1 : 0;
     enc_options.allow_mixed = allowMixed ? 1 : 0;
 
-    WebPAnimEncoder* enc = WebPAnimEncoderNew(width, height, &enc_options);
+    enc = WebPAnimEncoderNew(width, height, &enc_options);
     if (enc == NULL) {
-        (*env)->ReleaseIntArrayElements(env, delays, delay_array, JNI_ABORT);
-        return NULL;
+        goto cleanup;
     }
 
-    // 4. Initialize WebP config
     WebPConfig config;
     if (!WebPConfigInit(&config)) {
-        (*env)->ReleaseIntArrayElements(env, delays, delay_array, JNI_ABORT);
-        WebPAnimEncoderDelete(enc);
-        return NULL;
+        goto cleanup;
     }
-
     config.lossless = lossless ? 1 : 0;
     config.quality = quality;
     config.method = compressionMethod;
-
     if (!WebPValidateConfig(&config)) {
-        (*env)->ReleaseIntArrayElements(env, delays, delay_array, JNI_ABORT);
-        WebPAnimEncoderDelete(enc);
-        return NULL;
+        goto cleanup;
     }
 
-    // 5. Add frames to encoder
     int timestamp_ms = 0;
-    jboolean encoding_failed = JNI_FALSE;
-
     for (jsize i = 0; i < frame_count; i++) {
-        // Get frame byte array
-        jbyteArray frame_data = (jbyteArray)(*env)->GetObjectArrayElement(env, frames, i);
-        if (frame_data == NULL) {
-            encoding_failed = JNI_TRUE;
-            break;
+        jintArray frame = (jintArray)(*env)->GetObjectArrayElement(env, frames, i);
+        if (frame == NULL ||
+            (jlong)(*env)->GetArrayLength(env, frame) != expected_pixels) {
+            if (frame != NULL) (*env)->DeleteLocalRef(env, frame);
+            goto cleanup;
         }
 
-        jsize frame_size = (*env)->GetArrayLength(env, frame_data);
-        jbyte* frame_bytes = (*env)->GetByteArrayElements(env, frame_data, NULL);
-        if (frame_bytes == NULL) {
-            (*env)->DeleteLocalRef(env, frame_data);
-            encoding_failed = JNI_TRUE;
-            break;
-        }
-
-        // Verify frame size
-        if (frame_size != width * height * 4) {
-            (*env)->ReleaseByteArrayElements(env, frame_data, frame_bytes, JNI_ABORT);
-            (*env)->DeleteLocalRef(env, frame_data);
-            encoding_failed = JNI_TRUE;
-            break;
-        }
-
-        // Create WebPPicture
         WebPPicture picture;
         if (!WebPPictureInit(&picture)) {
-            (*env)->ReleaseByteArrayElements(env, frame_data, frame_bytes, JNI_ABORT);
-            (*env)->DeleteLocalRef(env, frame_data);
-            encoding_failed = JNI_TRUE;
-            break;
+            (*env)->DeleteLocalRef(env, frame);
+            goto cleanup;
         }
-
         picture.width = width;
         picture.height = height;
         picture.use_argb = 1;
 
-        if (!WebPPictureAlloc(&picture)) {
-            WebPPictureFree(&picture);
-            (*env)->ReleaseByteArrayElements(env, frame_data, frame_bytes, JNI_ABORT);
-            (*env)->DeleteLocalRef(env, frame_data);
-            encoding_failed = JNI_TRUE;
-            break;
+        /* WebPPictureImportBGRA allocates the picture buffer itself. */
+        jint* frame_pixels = (*env)->GetPrimitiveArrayCritical(env, frame, NULL);
+        int imported = 0;
+        if (frame_pixels != NULL) {
+            imported = WebPPictureImportBGRA(&picture, (const uint8_t*)frame_pixels, width * 4);
+            (*env)->ReleasePrimitiveArrayCritical(env, frame, frame_pixels, JNI_ABORT);
         }
+        (*env)->DeleteLocalRef(env, frame);
 
-        // Import RGBA data
-        if (!WebPPictureImportRGBA(&picture, (uint8_t*)frame_bytes, width * 4)) {
-            WebPPictureFree(&picture);
-            (*env)->ReleaseByteArrayElements(env, frame_data, frame_bytes, JNI_ABORT);
-            (*env)->DeleteLocalRef(env, frame_data);
-            encoding_failed = JNI_TRUE;
-            break;
-        }
-
-        // Add frame to encoder
-        if (!WebPAnimEncoderAdd(enc, &picture, timestamp_ms, &config)) {
-            WebPPictureFree(&picture);
-            (*env)->ReleaseByteArrayElements(env, frame_data, frame_bytes, JNI_ABORT);
-            (*env)->DeleteLocalRef(env, frame_data);
-            encoding_failed = JNI_TRUE;
-            break;
-        }
-
-        // Cleanup
+        int added = imported && WebPAnimEncoderAdd(enc, &picture, timestamp_ms, &config);
         WebPPictureFree(&picture);
-        (*env)->ReleaseByteArrayElements(env, frame_data, frame_bytes, JNI_ABORT);
-        (*env)->DeleteLocalRef(env, frame_data);
-
-        // Update timestamp for next frame
+        if (!added) {
+            goto cleanup;
+        }
         timestamp_ms += delay_array[i];
     }
 
-    // Release delays array
-    (*env)->ReleaseIntArrayElements(env, delays, delay_array, JNI_ABORT);
-
-    // Check if encoding failed
-    if (encoding_failed) {
-        WebPAnimEncoderDelete(enc);
-        return NULL;
+    /* Finalize (flush last frame) and assemble. */
+    if (!WebPAnimEncoderAdd(enc, NULL, timestamp_ms, NULL) ||
+        !WebPAnimEncoderAssemble(enc, &webp_data)) {
+        goto cleanup;
     }
 
-    // 6. Finalize animation (add NULL frame)
-    if (!WebPAnimEncoderAdd(enc, NULL, timestamp_ms, NULL)) {
-        WebPAnimEncoderDelete(enc);
-        return NULL;
-    }
-
-    // 7. Assemble WebP data
-    WebPData webp_data;
-    WebPDataInit(&webp_data);
-
-    if (!WebPAnimEncoderAssemble(enc, &webp_data)) {
-        WebPAnimEncoderDelete(enc);
-        return NULL;
-    }
-
-    // 8. Create Java byte array
-    jbyteArray result = (*env)->NewByteArray(env, webp_data.size);
+    result = (*env)->NewByteArray(env, (jsize)webp_data.size);
     if (result != NULL) {
-        (*env)->SetByteArrayRegion(env, result, 0, webp_data.size, (jbyte*)webp_data.bytes);
+        (*env)->SetByteArrayRegion(env, result, 0, (jsize)webp_data.size, (const jbyte*)webp_data.bytes);
     }
 
-    // 9. Cleanup
+cleanup:
     WebPDataClear(&webp_data);
-    WebPAnimEncoderDelete(enc);
-
+    if (enc != NULL) {
+        WebPAnimEncoderDelete(enc);
+    }
+    (*env)->ReleaseIntArrayElements(env, delays, delay_array, JNI_ABORT);
     return result;
 }
 
 /*
- * Class:     NativeWebP
- * Method:    decodeAnimatedWebP
- * Signature: ([BLdev/matrixlab/webp4j/model/AnimatedWebPData;)Z
+ * Decodes an animated WebP into packed ARGB frames and populates an
+ * AnimatedWebPData object (framePixels, timestamps, metadata).
  *
- * This JNI function decodes an animated WebP image into individual frames
- * using the libwebp WebPAnimDecoder API.
+ * The input uses GetByteArrayElements, NOT a critical section: the
+ * WebPAnimDecoder retains a pointer into the buffer for its whole lifetime,
+ * and the frame loop must make JNI calls (NewIntArray, SetIntArrayRegion,
+ * SetObjectArrayElement) while that pointer stays valid — both are illegal
+ * inside a critical section.
  *
- * It extracts all frames as RGBA byte arrays along with their cumulative
- * timestamps, and populates the Java AnimatedWebPData object.
- *
- * Parameters:
- * - webPData: A Java byte array containing the animated WebP image data.
- * - result: A Java AnimatedWebPData object to populate with decoded data.
- *
- * Returns:
- * - true (JNI_TRUE) if decoding is successful.
- * - false (JNI_FALSE) if decoding fails.
+ * The per-frame SetIntArrayRegion copy is unavoidable: the decoder owns and
+ * reuses its internal frame buffer.
  */
-JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_decodeAnimatedWebP
+JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_decodeAnimated
   (JNIEnv *env, jclass clazz, jbyteArray webPData, jobject result) {
+    jboolean ok = JNI_FALSE;
+    WebPAnimDecoder* dec = NULL;
 
-    // Get WebP data from Java byte array
     jsize data_size = (*env)->GetArrayLength(env, webPData);
     jbyte* webp_bytes = (*env)->GetByteArrayElements(env, webPData, NULL);
     if (webp_bytes == NULL) {
         return JNI_FALSE;
     }
 
-    // Create WebPData structure
     WebPData webp_data;
     webp_data.bytes = (const uint8_t*)webp_bytes;
     webp_data.size = (size_t)data_size;
 
-    // Initialize decoder with default options (MODE_RGBA)
     WebPAnimDecoderOptions dec_options;
     if (!WebPAnimDecoderOptionsInit(&dec_options)) {
-        (*env)->ReleaseByteArrayElements(env, webPData, webp_bytes, JNI_ABORT);
-        return JNI_FALSE;
+        goto cleanup;
     }
-    // MODE_RGBA is the default, no need to set explicitly
+    /* BGRA frame buffers == Java ARGB ints on LE: frames go into int[]
+     * arrays that the Java side wraps directly as TYPE_INT_ARGB images. */
+    dec_options.color_mode = MODE_BGRA;
 
-    WebPAnimDecoder* dec = WebPAnimDecoderNew(&webp_data, &dec_options);
+    dec = WebPAnimDecoderNew(&webp_data, &dec_options);
     if (dec == NULL) {
-        (*env)->ReleaseByteArrayElements(env, webPData, webp_bytes, JNI_ABORT);
-        return JNI_FALSE;
+        goto cleanup;
     }
 
-    // Get animation info
     WebPAnimInfo anim_info;
     if (!WebPAnimDecoderGetInfo(dec, &anim_info)) {
-        WebPAnimDecoderDelete(dec);
-        (*env)->ReleaseByteArrayElements(env, webPData, webp_bytes, JNI_ABORT);
-        return JNI_FALSE;
+        goto cleanup;
     }
 
     uint32_t canvas_width = anim_info.canvas_width;
     uint32_t canvas_height = anim_info.canvas_height;
     uint32_t frame_count = anim_info.frame_count;
-    size_t frame_size = canvas_width * canvas_height * 4;  // RGBA
+    jsize frame_pixels = (jsize)(canvas_width * canvas_height);
 
-    // Create Java arrays for frame data and timestamps
-    jclass byteArrayClass = (*env)->FindClass(env, "[B");
-    if (byteArrayClass == NULL) {
-        WebPAnimDecoderDelete(dec);
-        (*env)->ReleaseByteArrayElements(env, webPData, webp_bytes, JNI_ABORT);
-        return JNI_FALSE;
+    jobjectArray framePixelsArray =
+        (*env)->NewObjectArray(env, (jsize)frame_count, g_int_array_class, NULL);
+    if (framePixelsArray == NULL) {
+        goto cleanup;
     }
-
-    jobjectArray frameDataArray = (*env)->NewObjectArray(env, (jsize)frame_count, byteArrayClass, NULL);
-    if (frameDataArray == NULL) {
-        WebPAnimDecoderDelete(dec);
-        (*env)->ReleaseByteArrayElements(env, webPData, webp_bytes, JNI_ABORT);
-        return JNI_FALSE;
-    }
-
     jintArray timestampsArray = (*env)->NewIntArray(env, (jsize)frame_count);
     if (timestampsArray == NULL) {
-        WebPAnimDecoderDelete(dec);
-        (*env)->ReleaseByteArrayElements(env, webPData, webp_bytes, JNI_ABORT);
-        return JNI_FALSE;
+        goto cleanup;
     }
 
-    // Decode all frames
     uint32_t frame_index = 0;
     while (WebPAnimDecoderHasMoreFrames(dec) && frame_index < frame_count) {
         uint8_t* buf;
         int timestamp;
-
         if (!WebPAnimDecoderGetNext(dec, &buf, &timestamp)) {
-            WebPAnimDecoderDelete(dec);
-            (*env)->ReleaseByteArrayElements(env, webPData, webp_bytes, JNI_ABORT);
-            return JNI_FALSE;
+            goto cleanup;
         }
 
-        // Copy frame data to a new Java byte array (buf is owned by decoder)
-        jbyteArray frameBytes = (*env)->NewByteArray(env, (jsize)frame_size);
-        if (frameBytes == NULL) {
-            WebPAnimDecoderDelete(dec);
-            (*env)->ReleaseByteArrayElements(env, webPData, webp_bytes, JNI_ABORT);
-            return JNI_FALSE;
+        jintArray frameArray = (*env)->NewIntArray(env, frame_pixels);
+        if (frameArray == NULL) {
+            goto cleanup;
         }
+        (*env)->SetIntArrayRegion(env, frameArray, 0, frame_pixels, (const jint*)buf);
+        (*env)->SetObjectArrayElement(env, framePixelsArray, (jsize)frame_index, frameArray);
+        (*env)->DeleteLocalRef(env, frameArray);
 
-        (*env)->SetByteArrayRegion(env, frameBytes, 0, (jsize)frame_size, (jbyte*)buf);
-        (*env)->SetObjectArrayElement(env, frameDataArray, (jsize)frame_index, frameBytes);
-        (*env)->DeleteLocalRef(env, frameBytes);
-
-        // Store timestamp
         jint ts = (jint)timestamp;
         (*env)->SetIntArrayRegion(env, timestampsArray, (jsize)frame_index, 1, &ts);
-
         frame_index++;
     }
 
-    // Clean up decoder
-    WebPAnimDecoderDelete(dec);
+    (*env)->SetIntField(env, result, g_anim_data_canvas_width, (jint)canvas_width);
+    (*env)->SetIntField(env, result, g_anim_data_canvas_height, (jint)canvas_height);
+    (*env)->SetIntField(env, result, g_anim_data_loop_count, (jint)anim_info.loop_count);
+    (*env)->SetIntField(env, result, g_anim_data_bgcolor, (jint)anim_info.bgcolor);
+    (*env)->SetIntField(env, result, g_anim_data_frame_count, (jint)frame_index);
+    (*env)->SetObjectField(env, result, g_anim_data_frame_pixels, framePixelsArray);
+    (*env)->SetObjectField(env, result, g_anim_data_timestamps, timestampsArray);
+    ok = JNI_TRUE;
+
+cleanup:
+    if (dec != NULL) {
+        WebPAnimDecoderDelete(dec);
+    }
     (*env)->ReleaseByteArrayElements(env, webPData, webp_bytes, JNI_ABORT);
-
-    // Populate the AnimatedWebPData Java object
-    jclass resultClass = (*env)->GetObjectClass(env, result);
-    if (resultClass == NULL) {
-        return JNI_FALSE;
-    }
-
-    // Get field IDs
-    jfieldID fidCanvasWidth = (*env)->GetFieldID(env, resultClass, "canvasWidth", "I");
-    jfieldID fidCanvasHeight = (*env)->GetFieldID(env, resultClass, "canvasHeight", "I");
-    jfieldID fidLoopCount = (*env)->GetFieldID(env, resultClass, "loopCount", "I");
-    jfieldID fidBgcolor = (*env)->GetFieldID(env, resultClass, "bgcolor", "I");
-    jfieldID fidFrameCount = (*env)->GetFieldID(env, resultClass, "frameCount", "I");
-    jfieldID fidRawFrameData = (*env)->GetFieldID(env, resultClass, "rawFrameData", "[[B");
-    jfieldID fidTimestamps = (*env)->GetFieldID(env, resultClass, "timestamps", "[I");
-
-    if (fidCanvasWidth == NULL || fidCanvasHeight == NULL || fidLoopCount == NULL ||
-        fidBgcolor == NULL || fidFrameCount == NULL || fidRawFrameData == NULL ||
-        fidTimestamps == NULL) {
-        return JNI_FALSE;
-    }
-
-    // Set fields
-    (*env)->SetIntField(env, result, fidCanvasWidth, (jint)canvas_width);
-    (*env)->SetIntField(env, result, fidCanvasHeight, (jint)canvas_height);
-    (*env)->SetIntField(env, result, fidLoopCount, (jint)anim_info.loop_count);
-    (*env)->SetIntField(env, result, fidBgcolor, (jint)anim_info.bgcolor);
-    (*env)->SetIntField(env, result, fidFrameCount, (jint)frame_index);
-    (*env)->SetObjectField(env, result, fidRawFrameData, frameDataArray);
-    (*env)->SetObjectField(env, result, fidTimestamps, timestampsArray);
-
-    return JNI_TRUE;
+    return ok;
 }

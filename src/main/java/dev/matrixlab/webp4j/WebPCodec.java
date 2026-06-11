@@ -13,7 +13,6 @@ import dev.matrixlab.webp4j.model.WebPBitstreamFeatures;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -100,38 +99,21 @@ public final class WebPCodec {
             throw new IllegalArgumentException("The input BufferedImage cannot be null.");
         }
 
-        // Get the image width and height.
         int width = bufferedImage.getWidth();
         int height = bufferedImage.getHeight();
-
-        // Convert the BufferedImage to an RGB/RGBA byte array.
-        byte[] imageBytes = PixelConverter.toBytes(bufferedImage);
-        if (imageBytes.length == 0) {
-            throw new IOException("Failed to convert BufferedImage to a byte array.");
-        }
-
-        // Release image resources as soon as they are no longer needed.
-        bufferedImage.flush();
-
         boolean hasAlpha = bufferedImage.getColorModel().hasAlpha();
 
-        // Calculate the stride (number of bytes per row), each pixel is represented by 3 bytes (RGB) / 4 bytes (RGBA).
-        int stride = width * (hasAlpha ? 4 : 3);
+        // Zero-copy for TYPE_INT_ARGB/TYPE_INT_RGB images: pixels may be the
+        // image's live backing array, so it must never be modified.
+        int[] pixels = PixelConverter.toArgbPixels(bufferedImage, hasAlpha);
 
-        // Encode the RGB/RGBA data to WebP format using nativeWebP.
-        try {
-            byte[] encodedWebP = encodeWithNativeLibrary(imageBytes, width, height, stride, quality, lossless, hasAlpha);
-
-            if (encodedWebP == null || encodedWebP.length == 0) {
-                String encodingType = lossless ? "Lossless" : "Lossy";
-                throw new IOException(encodingType + " WebP encoding failed.");
-            }
-
-            return encodedWebP;
-        } finally {
-            // Clear the contents of the imageBytes and remove its reference to allow garbage collection.
-            Arrays.fill(imageBytes, (byte) 0);
+        byte[] encodedWebP = NativeWebP.encode(pixels, width, height, quality, lossless, hasAlpha);
+        if (encodedWebP == null || encodedWebP.length == 0) {
+            String encodingType = lossless ? "Lossless" : "Lossy";
+            throw new IOException(encodingType + " WebP encoding failed.");
         }
+
+        return encodedWebP;
     }
 
     /**
@@ -174,68 +156,24 @@ public final class WebPCodec {
             throw new IllegalArgumentException("The input WebP data cannot be null or empty.");
         }
 
-        // Retrieve image dimensions from the WebP data.
-        int[] dimensions = getWebPInfo(webPData);
-
-        int width = dimensions[0];
-        int height = dimensions[1];
-
         WebPBitstreamFeatures features = new WebPBitstreamFeatures();
-
         int status = NativeWebP.getFeatures(webPData, webPData.length, features);
         VP8StatusCode code = VP8StatusCode.getStatusCode(status);
         if (code != VP8StatusCode.VP8_STATUS_OK) {
             throw new IOException("Failed to get WebP bitstream features, error code: " + code);
         }
 
+        int width = features.getWidth();
+        int height = features.getHeight();
         boolean hasAlpha = features.isHasAlpha();
 
-        // Calculate the stride for RGB (3 bytes per pixel) / RGBA (4 bytes per pixel).
-        int outputStride = width * (hasAlpha ? 4 : 3);
-
-        // Allocate a buffer for the decoded RGB/RGBA image data.
-        byte[] outputBuffer = new byte[height * outputStride];
-
-        try {
-            // Decode the WebP data into the provided RGB/RGBA buffer.
-            boolean success = hasAlpha
-                    ? NativeWebP.decodeRGBAInto(webPData, outputBuffer, outputStride)
-                    : NativeWebP.decodeRGBInto(webPData, outputBuffer, outputStride);
-            if (!success) {
-                throw new IOException("Failed to decode WebP data into RGB buffer.");
-            }
-
-            // Convert the decoded RGB/RGBA byte array into a BufferedImage.
-            return PixelConverter.toBufferedImage(width, height, outputBuffer);
-        } finally {
-            // Clear the contents of the outputBuffer to remove sensitive data.
-            Arrays.fill(outputBuffer, (byte) 0);
+        // Decode straight into the array that will back the returned image.
+        int[] pixels = new int[width * height];
+        if (!NativeWebP.decodeInto(webPData, pixels, width * 4)) {
+            throw new IOException("Failed to decode WebP data.");
         }
-    }
 
-    /**
-     * Handles the native library encoding calls based on encoding type and alpha channel.
-     *
-     * @param imageBytes The image byte data
-     * @param width      Image width
-     * @param height     Image height
-     * @param stride     Bytes per row
-     * @param quality    Quality parameter (ignored for lossless)
-     * @param lossless   True for lossless, false for lossy
-     * @param hasAlpha   True if image has an alpha channel
-     * @return Encoded WebP byte array
-     */
-    private static byte[] encodeWithNativeLibrary(byte[] imageBytes, int width, int height, int stride,
-                                                  float quality, boolean lossless, boolean hasAlpha) {
-        if (lossless) {
-            return hasAlpha
-                    ? NativeWebP.encodeLosslessRGBA(imageBytes, width, height, stride)
-                    : NativeWebP.encodeLosslessRGB(imageBytes, width, height, stride);
-        } else {
-            return hasAlpha
-                    ? NativeWebP.encodeRGBA(imageBytes, width, height, stride, quality)
-                    : NativeWebP.encodeRGB(imageBytes, width, height, stride, quality);
-        }
+        return PixelConverter.wrapPixels(pixels, width, height, hasAlpha);
     }
 
     // ============================================

@@ -9,8 +9,8 @@ import java.util.List;
  * including individual frames with their timestamps, canvas dimensions,
  * loop count, and background color.
  * <p>
- * The raw frame data (byte arrays and timestamps) are populated by the
- * native layer, and then converted to {@link AnimatedWebPFrame} objects
+ * The raw frame data (packed ARGB pixel arrays and timestamps) are populated
+ * by the native layer, and then converted to {@link AnimatedWebPFrame} objects
  * by the decoder.
  */
 public class AnimatedWebPData {
@@ -23,7 +23,7 @@ public class AnimatedWebPData {
     private int frameCount;
 
     // Raw data populated by JNI (before conversion to AnimatedWebPFrame list)
-    private byte[][] rawFrameData;
+    private int[][] framePixels;
     private int[] timestamps;
 
     /**
@@ -141,24 +141,24 @@ public class AnimatedWebPData {
     }
 
     /**
-     * Gets the raw RGBA frame data populated by the native layer.
+     * Gets the raw frame pixels populated by the native layer.
      * <p>
-     * Each element is an RGBA byte array of size canvasWidth * canvasHeight * 4.
-     * This data is used internally by the decoder to create BufferedImage objects.
+     * Each element is a packed ARGB int array of length canvasWidth * canvasHeight.
+     * The decoder wraps these arrays directly as BufferedImage backing stores.
      *
-     * @return Array of RGBA frame byte arrays, or null if not yet populated
+     * @return Array of packed ARGB frame pixels, or null if not yet populated
      */
-    public byte[][] getRawFrameData() {
-        return rawFrameData;
+    public int[][] getFramePixels() {
+        return framePixels;
     }
 
     /**
-     * Sets the raw frame data. Called by native code.
+     * Sets the raw frame pixels. Called by native code.
      *
-     * @param rawFrameData Array of RGBA frame byte arrays
+     * @param framePixels Array of packed ARGB frame pixels
      */
-    public void setRawFrameData(byte[][] rawFrameData) {
-        this.rawFrameData = rawFrameData;
+    public void setFramePixels(int[][] framePixels) {
+        this.framePixels = framePixels;
     }
 
     /**

@@ -36,34 +36,37 @@ public class NativeWebP {
     public static native int getFeatures(byte[] data, int dataSize, WebPBitstreamFeatures features);
 
     /**
-     * size_t WebPEncodeRGB(const uint8_t* rgb, int width, int height, int stride, float quality_factor, uint8_t** output);
+     * Encodes packed ARGB pixels (0xAARRGGBB ints, i.e. BGRA byte order on
+     * little-endian) to a WebP bitstream.
+     * <p>
+     * The pixel array is pinned with GetPrimitiveArrayCritical and imported
+     * directly by libwebp (WebPPictureImportBGRA/BGRX) — no intermediate copy.
+     * The array is never written to, so a BufferedImage's live backing array
+     * can be passed safely.
+     *
+     * @param pixels   Packed ARGB pixels, length must equal width * height
+     * @param quality  Quality factor (0-100), ignored when lossless
+     * @param lossless True for lossless encoding
+     * @param hasAlpha False to ignore the alpha byte of each pixel
+     * @return WebP encoded bytes, or null on failure
      */
-    public static native byte[] encodeRGB(byte[] image, int width, int height, int stride, float quality);
+    public static native byte[] encode(int[] pixels, int width, int height,
+                                       float quality, boolean lossless, boolean hasAlpha);
 
     /**
-     * size_t WebPEncodeRGBA(const uint8_t* rgba, int width, int height, int stride, float quality_factor, uint8_t** output);
+     * Decodes a WebP bitstream directly into a packed ARGB int[] — libwebp
+     * writes BGRA bytes straight into the pinned Java array, so the array can
+     * be a BufferedImage's live backing store.
+     * <p>
+     * Both arrays stay pinned for the full duration of the decode, which can
+     * delay GC for very large images — the accepted cost of zero-copy.
+     *
+     * @param data         WebP bitstream
+     * @param output       Destination, length must equal width * height
+     * @param outputStride Row stride in BYTES (width * 4)
+     * @return true on success
      */
-    public static native byte[] encodeRGBA(byte[] image, int width, int height, int stride, float quality);
-
-    /**
-     * size_t WebPEncodeLosslessRGB(const uint8_t* rgb, int width, int height, int stride, uint8_t** output);
-     */
-    public static native byte[] encodeLosslessRGB(byte[] image, int width, int height, int stride);
-
-    /**
-     * size_t WebPEncodeLosslessRGBA(const uint8_t* rgba, int width, int height, int stride, uint8_t** output);
-     */
-    public static native byte[] encodeLosslessRGBA(byte[] image, int width, int height, int stride);
-
-    /**
-     * uint8_t* WebPDecodeRGBInto(const uint8_t* data, size_t data_size, uint8_t* output_buffer, int output_buffer_size, int output_stride);
-     */
-    public static native boolean decodeRGBInto(byte[] data, byte[] outputBuffer, int outputStride);
-
-    /**
-     * uint8_t* WebPDecodeRGBAInto(const uint8_t* data, size_t data_size, uint8_t* output_buffer, int output_buffer_size, int output_stride);
-     */
-    public static native boolean decodeRGBAInto(byte[] data, byte[] outputBuffer, int outputStride);
+    public static native boolean decodeInto(byte[] data, int[] output, int outputStride);
 
     /**
      * Gets information about a GIF file using native giflib.
@@ -104,12 +107,14 @@ public class NativeWebP {
     );
 
     /**
-     * Encodes animated WebP from Java-decoded GIF frames.
-     * This is used when GIF is decoded by Java ImageIO (fallback path).
+     * Encodes an animated WebP from packed ARGB frames using the
+     * WebPAnimEncoder API.
+     * <p>
+     * Each frame array is pinned and imported directly by libwebp
+     * (WebPPictureImportBGRA) — frames are never written to, so live
+     * BufferedImage backing arrays can be passed safely.
      *
-     * Uses WebPAnimEncoder API to create animated WebP.
-     *
-     * @param frames Array of RGBA frame data (each frame is width * height * 4 bytes)
+     * @param frames Packed ARGB frames, each of length width * height
      * @param delays Array of frame delays in milliseconds
      * @param width Canvas width
      * @param height Canvas height
@@ -123,8 +128,8 @@ public class NativeWebP {
      * @param allowMixed True to allow mixed compression
      * @return WebP encoded byte array, or null on failure
      */
-    public static native byte[] encodeAnimatedWebP(
-            byte[][] frames,
+    public static native byte[] encodeAnimated(
+            int[][] frames,
             int[] delays,
             int width,
             int height,
@@ -141,19 +146,19 @@ public class NativeWebP {
     /**
      * Decodes an animated WebP image into individual frames.
      * <p>
-     * Uses the libwebp WebPAnimDecoder API to extract all frames as RGBA data
-     * along with their cumulative timestamps.
+     * Uses the libwebp WebPAnimDecoder API to extract all frames as packed
+     * ARGB pixels along with their cumulative timestamps.
      * <p>
      * The result object will have its fields populated:
      * - canvasWidth, canvasHeight, loopCount, bgcolor, frameCount (metadata)
-     * - rawFrameData (byte[][] of RGBA frame data)
+     * - framePixels (int[][] of packed ARGB frame pixels)
      * - timestamps (int[] of cumulative timestamps in milliseconds)
      *
      * @param webPData The animated WebP image data
      * @param result   AnimatedWebPData object to populate with decoded frames
      * @return true on success, false on failure
      */
-    public static native boolean decodeAnimatedWebP(byte[] webPData, AnimatedWebPData result);
+    public static native boolean decodeAnimated(byte[] webPData, AnimatedWebPData result);
 
     /**
      * Checks if the native library has been successfully loaded.

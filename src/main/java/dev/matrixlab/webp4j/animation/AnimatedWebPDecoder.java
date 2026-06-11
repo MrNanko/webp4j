@@ -8,7 +8,6 @@ import dev.matrixlab.webp4j.model.AnimatedWebPFrame;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -57,39 +56,32 @@ public final class AnimatedWebPDecoder {
         AnimatedWebPData result = new AnimatedWebPData();
 
         // Decode using native WebPAnimDecoder
-        boolean success = NativeWebP.decodeAnimatedWebP(webPData, result);
+        boolean success = NativeWebP.decodeAnimated(webPData, result);
         if (!success) {
             throw new IOException("Failed to decode animated WebP image.");
         }
 
-        // Convert raw RGBA byte arrays to BufferedImage frames
-        byte[][] rawFrameData = result.getRawFrameData();
+        int[][] framePixels = result.getFramePixels();
         int[] timestamps = result.getTimestamps();
 
-        if (rawFrameData == null || timestamps == null) {
+        if (framePixels == null || timestamps == null) {
             throw new IOException("Native decoder returned incomplete data.");
         }
 
         int canvasWidth = result.getCanvasWidth();
         int canvasHeight = result.getCanvasHeight();
 
-        List<AnimatedWebPFrame> frames = new ArrayList<>(rawFrameData.length);
-        try {
-            for (int i = 0; i < rawFrameData.length; i++) {
-                BufferedImage image = PixelConverter.toBufferedImage(canvasWidth, canvasHeight, rawFrameData[i]);
-                frames.add(new AnimatedWebPFrame(image, timestamps[i]));
-            }
-        } finally {
-            // Clear raw frame data to free memory
-            for (byte[] frame : rawFrameData) {
-                if (frame != null) {
-                    Arrays.fill(frame, (byte) 0);
-                }
-            }
-            // Remove references to raw data
-            result.setRawFrameData(null);
-            result.setTimestamps(null);
+        // Each BufferedImage wraps its frame's pixel array directly — no
+        // second per-frame buffer ever exists.
+        List<AnimatedWebPFrame> frames = new ArrayList<>(framePixels.length);
+        for (int i = 0; i < framePixels.length; i++) {
+            BufferedImage image = PixelConverter.wrapPixels(framePixels[i], canvasWidth, canvasHeight, true);
+            frames.add(new AnimatedWebPFrame(image, timestamps[i]));
         }
+
+        // Drop the redundant references; the images now own the pixel arrays.
+        result.setFramePixels(null);
+        result.setTimestamps(null);
 
         result.setFrames(frames);
         return result;

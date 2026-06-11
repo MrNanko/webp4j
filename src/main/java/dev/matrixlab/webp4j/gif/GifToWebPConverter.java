@@ -6,8 +6,8 @@ import dev.matrixlab.webp4j.model.AnimationInfo;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.awt.image.DataBufferInt;
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.function.Supplier;
 
 /**
@@ -174,86 +174,58 @@ public final class GifToWebPConverter {
         }
 
         // Animated GIF: encode all frames using native WebPAnimEncoder
-        byte[][] frameData = new byte[gif.frames.size()][];
+        int[][] framePixels = new int[gif.frames.size()][];
         int[] delays = new int[gif.frames.size()];
 
         // Maintain a canvas for frame composition (GIF frames may be incremental)
         BufferedImage canvas = new BufferedImage(gif.width, gif.height, BufferedImage.TYPE_INT_ARGB);
+        int[] canvasPixels = ((DataBufferInt) canvas.getRaster().getDataBuffer()).getData();
         BufferedImage previousFrame = null;
 
-        try {
-            for (int i = 0; i < gif.frames.size(); i++) {
-                previousFrame = composeFrame(gif, i, canvas, previousFrame);
-                frameData[i] = PixelConverter.toBytes(canvas);
-                delays[i] = gif.frames.get(i).delayMs;
-            }
-
-            // Use native WebPAnimEncoder for animated output
-            byte[] result = NativeWebP.encodeAnimatedWebP(
-                    frameData,
-                    delays,
-                    gif.width,
-                    gif.height,
-                    config.getQuality(),
-                    config.isLossless(),
-                    config.getCompressionMethod(),
-                    config.getLoopCount() == -1 ? gif.loopCount : config.getLoopCount(),
-                    config.getKmin(),
-                    config.getKmax(),
-                    config.isMinimizeSize(),
-                    config.isAllowMixed()
-            );
-
-            if (result == null || result.length == 0) {
-                throw new IOException("Animated WebP encoding failed");
-            }
-
-            return result;
-
-        } finally {
-            // Clear frame data arrays to free memory
-            for (byte[] frame : frameData) {
-                if (frame != null) {
-                    Arrays.fill(frame, (byte) 0);
-                }
-            }
+        for (int i = 0; i < gif.frames.size(); i++) {
+            previousFrame = composeFrame(gif, i, canvas, previousFrame);
+            // The canvas is reused for the next frame, so its pixels must be cloned
+            // here — one copy per frame, with no format conversion.
+            framePixels[i] = canvasPixels.clone();
+            delays[i] = gif.frames.get(i).delayMs;
         }
+
+        // Use native WebPAnimEncoder for animated output
+        byte[] result = NativeWebP.encodeAnimated(
+                framePixels,
+                delays,
+                gif.width,
+                gif.height,
+                config.getQuality(),
+                config.isLossless(),
+                config.getCompressionMethod(),
+                config.getLoopCount() == -1 ? gif.loopCount : config.getLoopCount(),
+                config.getKmin(),
+                config.getKmax(),
+                config.isMinimizeSize(),
+                config.isAllowMixed()
+        );
+
+        if (result == null || result.length == 0) {
+            throw new IOException("Animated WebP encoding failed");
+        }
+
+        return result;
     }
 
     /**
      * Encodes a single BufferedImage frame to WebP.
      */
     private static byte[] encodeSingleFrame(BufferedImage image, float quality, boolean lossless) throws IOException {
-        byte[] imageBytes = PixelConverter.toBytes(image);
-        if (imageBytes.length == 0) {
-            throw new IOException("Failed to convert BufferedImage to a byte array.");
-        }
-
-        int width = image.getWidth();
-        int height = image.getHeight();
         boolean hasAlpha = image.getColorModel().hasAlpha();
-        int stride = width * (hasAlpha ? 4 : 3);
+        int[] pixels = PixelConverter.toArgbPixels(image, hasAlpha);
 
-        try {
-            byte[] result;
-            if (lossless) {
-                result = hasAlpha
-                        ? NativeWebP.encodeLosslessRGBA(imageBytes, width, height, stride)
-                        : NativeWebP.encodeLosslessRGB(imageBytes, width, height, stride);
-            } else {
-                result = hasAlpha
-                        ? NativeWebP.encodeRGBA(imageBytes, width, height, stride, quality)
-                        : NativeWebP.encodeRGB(imageBytes, width, height, stride, quality);
-            }
-
-            if (result == null || result.length == 0) {
-                throw new IOException("WebP encoding failed.");
-            }
-
-            return result;
-        } finally {
-            Arrays.fill(imageBytes, (byte) 0);
+        byte[] result = NativeWebP.encode(pixels, image.getWidth(), image.getHeight(), quality, lossless, hasAlpha);
+        if (result == null || result.length == 0) {
+            throw new IOException("WebP encoding failed.");
         }
+
+        return result;
     }
 
     /**

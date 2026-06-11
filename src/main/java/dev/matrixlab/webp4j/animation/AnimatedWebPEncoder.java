@@ -57,53 +57,45 @@ public final class AnimatedWebPEncoder {
         int width = firstFrame.getWidth();
         int height = firstFrame.getHeight();
 
-        // Convert all BufferedImage frames to RGBA byte arrays
-        byte[][] frameData = new byte[frames.size()][];
+        // Collect packed ARGB pixels per frame. TYPE_INT_ARGB frames (e.g. from
+        // FrameNormalizer) contribute their live backing arrays — zero-copy —
+        // so the arrays must never be modified.
+        int[][] framePixels = new int[frames.size()][];
 
-        try {
-            for (int i = 0; i < frames.size(); i++) {
-                BufferedImage frame = frames.get(i);
+        for (int i = 0; i < frames.size(); i++) {
+            BufferedImage frame = frames.get(i);
 
-                // Validate frame dimensions match canvas
-                if (frame.getWidth() != width || frame.getHeight() != height) {
-                    throw new IllegalArgumentException(
-                            String.format("Frame %d dimensions (%dx%d) don't match canvas (%dx%d)",
-                                    i, frame.getWidth(), frame.getHeight(), width, height));
-                }
-
-                frameData[i] = PixelConverter.toBytes(frame);
+            // Validate frame dimensions match canvas
+            if (frame.getWidth() != width || frame.getHeight() != height) {
+                throw new IllegalArgumentException(
+                        String.format("Frame %d dimensions (%dx%d) don't match canvas (%dx%d)",
+                                i, frame.getWidth(), frame.getHeight(), width, height));
             }
 
-            // Encode using native WebPAnimEncoder
-            byte[] result = NativeWebP.encodeAnimatedWebP(
-                    frameData,
-                    delays,
-                    width,
-                    height,
-                    config.getQuality(),
-                    config.isLossless(),
-                    config.getCompressionMethod(),
-                    config.getLoopCount() == -1 ? 0 : config.getLoopCount(),  // Default to infinite loop
-                    config.getKmin(),
-                    config.getKmax(),
-                    config.isMinimizeSize(),
-                    config.isAllowMixed()
-            );
-
-            if (result == null || result.length == 0) {
-                throw new IOException("Animated WebP encoding failed");
-            }
-
-            return result;
-
-        } finally {
-            // Clear frame data arrays to free memory
-            for (byte[] frame : frameData) {
-                if (frame != null) {
-                    Arrays.fill(frame, (byte) 0);
-                }
-            }
+            framePixels[i] = PixelConverter.toArgbPixels(frame, true);
         }
+
+        // Encode using native WebPAnimEncoder
+        byte[] result = NativeWebP.encodeAnimated(
+                framePixels,
+                delays,
+                width,
+                height,
+                config.getQuality(),
+                config.isLossless(),
+                config.getCompressionMethod(),
+                config.getLoopCount() == -1 ? 0 : config.getLoopCount(),  // Default to infinite loop
+                config.getKmin(),
+                config.getKmax(),
+                config.isMinimizeSize(),
+                config.isAllowMixed()
+        );
+
+        if (result == null || result.length == 0) {
+            throw new IOException("Animated WebP encoding failed");
+        }
+
+        return result;
     }
 
     /**

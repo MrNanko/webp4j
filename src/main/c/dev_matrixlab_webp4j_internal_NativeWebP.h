@@ -33,51 +33,19 @@ JNIEXPORT jint JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_getFeatures
 
 /*
  * Class:     dev_matrixlab_webp4j_internal_NativeWebP
- * Method:    encodeRGB
- * Signature: ([BIIIF)[B
+ * Method:    encode
+ * Signature: ([IIIFZZ)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeRGB
-  (JNIEnv *, jclass, jbyteArray, jint, jint, jint, jfloat);
+JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encode
+  (JNIEnv *, jclass, jintArray, jint, jint, jfloat, jboolean, jboolean);
 
 /*
  * Class:     dev_matrixlab_webp4j_internal_NativeWebP
- * Method:    encodeRGBA
- * Signature: ([BIIIF)[B
+ * Method:    decodeInto
+ * Signature: ([B[II)Z
  */
-JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeRGBA
-  (JNIEnv *, jclass, jbyteArray, jint, jint, jint, jfloat);
-
-/*
- * Class:     dev_matrixlab_webp4j_internal_NativeWebP
- * Method:    encodeLosslessRGB
- * Signature: ([BIII)[B
- */
-JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeLosslessRGB
-  (JNIEnv *, jclass, jbyteArray, jint, jint, jint);
-
-/*
- * Class:     dev_matrixlab_webp4j_internal_NativeWebP
- * Method:    encodeLosslessRGBA
- * Signature: ([BIII)[B
- */
-JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeLosslessRGBA
-  (JNIEnv *, jclass, jbyteArray, jint, jint, jint);
-
-/*
- * Class:     dev_matrixlab_webp4j_internal_NativeWebP
- * Method:    decodeRGBInto
- * Signature: ([B[BI)Z
- */
-JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_decodeRGBInto
-  (JNIEnv *, jclass, jbyteArray, jbyteArray, jint);
-
-/*
- * Class:     dev_matrixlab_webp4j_internal_NativeWebP
- * Method:    decodeRGBAInto
- * Signature: ([B[BI)Z
- */
-JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_decodeRGBAInto
-  (JNIEnv *, jclass, jbyteArray, jbyteArray, jint);
+JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_decodeInto
+  (JNIEnv *, jclass, jbyteArray, jintArray, jint);
 
 /*
  * Class:     dev_matrixlab_webp4j_internal_NativeWebP
@@ -97,18 +65,18 @@ JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encod
 
 /*
  * Class:     dev_matrixlab_webp4j_internal_NativeWebP
- * Method:    encodeAnimatedWebP
- * Signature: ([[B[IIIFZIIIIZZ)[B
+ * Method:    encodeAnimated
+ * Signature: ([[I[IIIFZIIIIZZ)[B
  */
-JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeAnimatedWebP
+JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeAnimated
   (JNIEnv *, jclass, jobjectArray, jintArray, jint, jint, jfloat, jboolean, jint, jint, jint, jint, jboolean, jboolean);
 
 /*
  * Class:     dev_matrixlab_webp4j_internal_NativeWebP
- * Method:    decodeAnimatedWebP
+ * Method:    decodeAnimated
  * Signature: ([BLdev/matrixlab/webp4j/model/AnimatedWebPData;)Z
  */
-JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_decodeAnimatedWebP
+JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_decodeAnimated
   (JNIEnv *, jclass, jbyteArray, jobject);
 
 #ifdef __cplusplus
