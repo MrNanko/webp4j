@@ -1,5 +1,6 @@
 #include "gif_decoder.h"
 #include <gif_lib.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -123,12 +124,36 @@ static void RenderFrame(GifFileType* gif, GifImageDesc* image_desc,
     }
 }
 
-GifDecodeResult* DecodeGifFromMemory(const uint8_t* data, size_t data_size) {
-    if (data == NULL || data_size == 0) {
+// Grow the frame array geometrically so the decode needs no pre-counting pass.
+static int EnsureFrameCapacity(GifDecodeResult* result, int* capacity) {
+    if (result->frame_count < *capacity) {
+        return 1;
+    }
+    int new_capacity = (*capacity == 0) ? 4 : *capacity * 2;
+    GifFrame* grown = (GifFrame*)realloc(result->frames, (size_t)new_capacity * sizeof(GifFrame));
+    if (grown == NULL) {
+        return 0;
+    }
+    result->frames = grown;
+    *capacity = new_capacity;
+    return 1;
+}
+
+/*
+ * Single-pass GIF decode. Frames are composed onto a persistent canvas and
+ * captured as canvas-sized RGBA composites. The frame array grows on demand,
+ * and the previous-canvas snapshot needed by DISPOSE_PREVIOUS is allocated
+ * lazily — the vast majority of GIFs never use that disposal method and never
+ * pay for the second canvas.
+ *
+ * max_frames limits the decode (1 for first-frame extraction): the loop stops
+ * as soon as enough frames are composed, skipping the rest of the file.
+ */
+static GifDecodeResult* DecodeGifInternal(const uint8_t* data, size_t data_size, int max_frames) {
+    if (data == NULL || data_size == 0 || max_frames <= 0) {
         return NULL;
     }
 
-    // Open GIF from memory
     GifMemoryReader reader = {data, data_size, 0};
     int error_code;
     GifFileType* gif = DGifOpen(&reader, ReadFromMemory, &error_code);
@@ -136,7 +161,6 @@ GifDecodeResult* DecodeGifFromMemory(const uint8_t* data, size_t data_size) {
         return NULL;
     }
 
-    // Allocate result structure
     GifDecodeResult* result = (GifDecodeResult*)calloc(1, sizeof(GifDecodeResult));
     if (result == NULL) {
         DGifCloseFile(gif, NULL);
@@ -149,23 +173,21 @@ GifDecodeResult* DecodeGifFromMemory(const uint8_t* data, size_t data_size) {
     result->loop_count = 0;  // Default: infinite
     result->has_transparency = 0;
 
-    // Allocate canvas buffers
     size_t canvas_size = (size_t)result->canvas_width * result->canvas_height * 4;
     uint8_t* canvas = (uint8_t*)malloc(canvas_size);
-    uint8_t* prev_canvas = (uint8_t*)malloc(canvas_size);
-
-    if (canvas == NULL || prev_canvas == NULL) {
-        free(canvas);
-        free(prev_canvas);
+    uint8_t* prev_canvas = NULL;  // Lazily allocated for DISPOSE_PREVIOUS only
+    if (canvas == NULL) {
         free(result);
         DGifCloseFile(gif, NULL);
         return NULL;
     }
-
     ClearCanvas(canvas, result->canvas_width, result->canvas_height, result->bgcolor);
 
-    // Count frames first
-    int estimated_frame_count = 0;
+    int frame_capacity = 0;
+    int transparent_index = -1;
+    int disposal_method = 0;
+    int delay_ms = 100;  // Default 100ms
+
     GifRecordType record_type;
     do {
         if (DGifGetRecordType(gif, &record_type) == GIF_ERROR) {
@@ -173,108 +195,56 @@ GifDecodeResult* DecodeGifFromMemory(const uint8_t* data, size_t data_size) {
         }
 
         if (record_type == IMAGE_DESC_RECORD_TYPE) {
-            estimated_frame_count++;
-            GifImageDesc image_desc;
             if (DGifGetImageDesc(gif) == GIF_ERROR) {
                 break;
             }
-            // Skip raster data
-            size_t raster_skip_size = (size_t)gif->Image.Width * gif->Image.Height;
-            uint8_t* raster = (uint8_t*)malloc(raster_skip_size);
-            if (raster) {
-                DGifGetLine(gif, raster, raster_skip_size);
-                free(raster);
-            }
-        } else if (record_type == EXTENSION_RECORD_TYPE) {
-            int ext_code;
-            GifByteType* extension;
-            if (DGifGetExtension(gif, &ext_code, &extension) != GIF_ERROR) {
-                while (extension != NULL) {
-                    DGifGetExtensionNext(gif, &extension);
+
+            // Snapshot the canvas only when THIS frame will need to be undone.
+            if (disposal_method == 3) {  // DISPOSE_PREVIOUS
+                if (prev_canvas == NULL) {
+                    prev_canvas = (uint8_t*)malloc(canvas_size);
+                    if (prev_canvas == NULL) {
+                        break;
+                    }
                 }
-            }
-        }
-    } while (record_type != TERMINATE_RECORD_TYPE);
-
-    // Reopen GIF
-    DGifCloseFile(gif, NULL);
-    reader.offset = 0;
-    gif = DGifOpen(&reader, ReadFromMemory, &error_code);
-    if (gif == NULL) {
-        free(canvas);
-        free(prev_canvas);
-        free(result);
-        return NULL;
-    }
-
-    // Allocate frame array
-    result->frames = (GifFrame*)calloc(estimated_frame_count, sizeof(GifFrame));
-    if (result->frames == NULL) {
-        free(canvas);
-        free(prev_canvas);
-        free(result);
-        DGifCloseFile(gif, NULL);
-        return NULL;
-    }
-
-    // Decode frames
-    int transparent_index = -1;
-    int disposal_method = 0;
-    int delay_ms = 100;  // Default 100ms
-
-    do {
-        if (DGifGetRecordType(gif, &record_type) == GIF_ERROR) {
-            break;
-        }
-
-        if (record_type == IMAGE_DESC_RECORD_TYPE) {
-            // Save previous canvas for RESTORE_PREVIOUS disposal
-            CopyCanvas(prev_canvas, canvas, result->canvas_width, result->canvas_height);
-
-            // Get image descriptor
-            if (DGifGetImageDesc(gif) == GIF_ERROR) {
-                break;
+                CopyCanvas(prev_canvas, canvas, result->canvas_width, result->canvas_height);
             }
 
-            // Allocate raster buffer
             size_t raster_size = (size_t)gif->Image.Width * gif->Image.Height;
             uint8_t* raster = (uint8_t*)malloc(raster_size);
             if (raster == NULL) {
                 break;
             }
-
-            // Read raster data
             if (DGifGetLine(gif, raster, raster_size) == GIF_ERROR) {
                 free(raster);
                 break;
             }
 
-            // Render frame onto canvas
             RenderFrame(gif, &gif->Image, raster, transparent_index,
-                       canvas, result->canvas_width, result->canvas_height);
+                        canvas, result->canvas_width, result->canvas_height);
             free(raster);
 
-            // Create frame
+            if (!EnsureFrameCapacity(result, &frame_capacity)) {
+                break;
+            }
             GifFrame* frame = &result->frames[result->frame_count];
-            frame->width = result->canvas_width;
-            frame->height = result->canvas_height;
             frame->duration_ms = delay_ms;
-            frame->x_offset = 0;
-            frame->y_offset = 0;
             frame->rgba_data = (uint8_t*)malloc(canvas_size);
-
             if (frame->rgba_data == NULL) {
                 break;
             }
-
             CopyCanvas(frame->rgba_data, canvas, result->canvas_width, result->canvas_height);
             result->frame_count++;
+
+            if (result->frame_count >= max_frames) {
+                break;
+            }
 
             // Apply disposal method for next frame
             if (disposal_method == 2) {
                 // DISPOSE_BACKGROUND: clear to background
                 ClearCanvas(canvas, result->canvas_width, result->canvas_height, result->bgcolor);
-            } else if (disposal_method == 3) {
+            } else if (disposal_method == 3 && prev_canvas != NULL) {
                 // DISPOSE_PREVIOUS: restore previous canvas
                 CopyCanvas(canvas, prev_canvas, result->canvas_width, result->canvas_height);
             }
@@ -343,28 +313,32 @@ GifDecodeResult* DecodeGifFromMemory(const uint8_t* data, size_t data_size) {
     return result;
 }
 
+GifDecodeResult* DecodeGifFromMemory(const uint8_t* data, size_t data_size) {
+    return DecodeGifInternal(data, data_size, INT_MAX);
+}
+
 GifFrame* DecodeGifFirstFrame(const uint8_t* data, size_t data_size,
                                int* canvas_width, int* canvas_height) {
-    GifDecodeResult* full_result = DecodeGifFromMemory(data, data_size);
-    if (full_result == NULL || full_result->frame_count == 0) {
-        if (full_result) FreeGifDecodeResult(full_result);
+    // Decoding stops right after the first frame is composed — the remaining
+    // frames of an animated GIF are never parsed.
+    GifDecodeResult* result = DecodeGifInternal(data, data_size, 1);
+    if (result == NULL) {
         return NULL;
     }
 
-    // Extract first frame
     GifFrame* first_frame = (GifFrame*)malloc(sizeof(GifFrame));
     if (first_frame == NULL) {
-        FreeGifDecodeResult(full_result);
+        FreeGifDecodeResult(result);
         return NULL;
     }
 
-    *first_frame = full_result->frames[0];
-    *canvas_width = full_result->canvas_width;
-    *canvas_height = full_result->canvas_height;
+    *first_frame = result->frames[0];
+    *canvas_width = result->canvas_width;
+    *canvas_height = result->canvas_height;
 
     // Prevent double-free by nulling out the rgba_data pointer
-    full_result->frames[0].rgba_data = NULL;
-    FreeGifDecodeResult(full_result);
+    result->frames[0].rgba_data = NULL;
+    FreeGifDecodeResult(result);
 
     return first_frame;
 }
@@ -390,6 +364,10 @@ int GetGifInfo(const uint8_t* data, size_t data_size,
     *loop_count = 0;
     *has_transparency = 0;
 
+    // Grow-only raster skip buffer, reused across frames
+    uint8_t* skip_buffer = NULL;
+    size_t skip_capacity = 0;
+
     // Scan through GIF records
     GifRecordType record_type;
     do {
@@ -405,12 +383,16 @@ int GetGifInfo(const uint8_t* data, size_t data_size,
             }
 
             // Skip raster data
-            size_t raster_skip_size = (size_t)gif->Image.Width * gif->Image.Height;
-            uint8_t* raster = (uint8_t*)malloc(raster_skip_size);
-            if (raster) {
-                DGifGetLine(gif, raster, raster_skip_size);
-                free(raster);
+            size_t raster_size = (size_t)gif->Image.Width * gif->Image.Height;
+            if (raster_size > skip_capacity) {
+                uint8_t* grown = (uint8_t*)realloc(skip_buffer, raster_size);
+                if (grown == NULL) {
+                    break;
+                }
+                skip_buffer = grown;
+                skip_capacity = raster_size;
             }
+            DGifGetLine(gif, skip_buffer, raster_size);
 
         } else if (record_type == EXTENSION_RECORD_TYPE) {
             int ext_code;
@@ -449,6 +431,7 @@ int GetGifInfo(const uint8_t* data, size_t data_size,
         }
     } while (record_type != TERMINATE_RECORD_TYPE);
 
+    free(skip_buffer);
     DGifCloseFile(gif, NULL);
     return 1;
 }

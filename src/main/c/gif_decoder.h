@@ -10,14 +10,13 @@ extern "C" {
 
 /**
  * Represents a single frame in a GIF animation.
+ *
+ * Frames are always full canvas-sized composites
+ * (canvas_width * canvas_height * 4 bytes of RGBA).
  */
 typedef struct {
-    uint8_t* rgba_data;  // RGBA pixel data (width * height * 4 bytes)
-    int width;           // Frame width
-    int height;          // Frame height
+    uint8_t* rgba_data;  // RGBA pixel data (canvas_width * canvas_height * 4 bytes)
     int duration_ms;     // Frame duration in milliseconds
-    int x_offset;        // Frame position X offset
-    int y_offset;        // Frame position Y offset
 } GifFrame;
 
 /**
