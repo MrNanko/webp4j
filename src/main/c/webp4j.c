@@ -207,11 +207,54 @@ JNIEXPORT jint JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_getFeatures
  * ------------------------------------------------------------------------- */
 
 /*
+ * Shared static-encode setup: mirrors the flow of libwebp's simple-API
+ * Encode() (picture_enc.c) so the output is identical to
+ * WebPEncode(Lossless)BGRA/BGR: preset DEFAULT, lossless preset quality 70,
+ * pic.use_argb = lossless.
+ */
+static int SetupEncode(WebPConfig* config, WebPPicture* pic, WebPMemoryWriter* wrt,
+                       jint width, jint height, jfloat quality, jboolean lossless) {
+    if (!WebPConfigPreset(config, WEBP_PRESET_DEFAULT, lossless ? 70.f : quality)) {
+        return 0;
+    }
+    config->lossless = lossless ? 1 : 0;
+
+    if (!WebPPictureInit(pic)) {
+        return 0;
+    }
+    pic->use_argb = lossless ? 1 : 0;
+    pic->width = width;
+    pic->height = height;
+
+    WebPMemoryWriterInit(wrt);
+    pic->writer = WebPMemoryWrite;
+    pic->custom_ptr = wrt;
+    return 1;
+}
+
+/*
+ * Shared static-encode tail: runs WebPEncode on an imported picture and
+ * materializes the bitstream as a Java byte array. Frees the picture and the
+ * writer in all cases.
+ */
+static jbyteArray FinishEncode(JNIEnv* env, WebPConfig* config, WebPPicture* pic,
+                               WebPMemoryWriter* wrt, int imported) {
+    int ok = imported && WebPEncode(config, pic);
+    WebPPictureFree(pic);
+
+    jbyteArray result = NULL;
+    if (ok && wrt->size > 0) {
+        result = (*env)->NewByteArray(env, (jsize)wrt->size);
+        if (result != NULL) {
+            (*env)->SetByteArrayRegion(env, result, 0, (jsize)wrt->size, (const jbyte*)wrt->mem);
+        }
+    }
+    WebPMemoryWriterClear(wrt);
+    return result;
+}
+
+/*
  * Encodes packed ARGB pixels (BGRA bytes on LE) to a WebP bitstream.
- *
- * Mirrors the flow of libwebp's simple-API Encode() (picture_enc.c) so the
- * output is identical to WebPEncodeBGRA/WebPEncodeLosslessBGRA: preset
- * DEFAULT, lossless preset quality 70, pic.use_argb = lossless.
  *
  * The only work inside the critical section is the single linear import pass;
  * the expensive WebPEncode runs after the array is released, so GC is never
@@ -226,45 +269,53 @@ JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encod
     }
 
     WebPConfig config;
-    if (!WebPConfigPreset(&config, WEBP_PRESET_DEFAULT, lossless ? 70.f : quality)) {
-        return NULL;
-    }
-    config.lossless = lossless ? 1 : 0;
-
     WebPPicture pic;
-    if (!WebPPictureInit(&pic)) {
+    WebPMemoryWriter wrt;
+    if (!SetupEncode(&config, &pic, &wrt, width, height, quality, lossless)) {
         return NULL;
     }
-    pic.use_argb = lossless ? 1 : 0;
-    pic.width = width;
-    pic.height = height;
-
-    WebPMemoryWriter wrt;
-    WebPMemoryWriterInit(&wrt);
-    pic.writer = WebPMemoryWrite;
-    pic.custom_ptr = &wrt;
 
     jint* p = (*env)->GetPrimitiveArrayCritical(env, pixels, NULL);
-    int ok = 0;
+    int imported = 0;
     if (p != NULL) {
-        ok = hasAlpha
+        imported = hasAlpha
             ? WebPPictureImportBGRA(&pic, (const uint8_t*)p, width * 4)
             : WebPPictureImportBGRX(&pic, (const uint8_t*)p, width * 4);
         (*env)->ReleasePrimitiveArrayCritical(env, pixels, p, JNI_ABORT);
     }
 
-    ok = ok && WebPEncode(&config, &pic);
-    WebPPictureFree(&pic);
+    return FinishEncode(env, &config, &pic, &wrt, imported);
+}
 
-    jbyteArray result = NULL;
-    if (ok && wrt.size > 0) {
-        result = (*env)->NewByteArray(env, (jsize)wrt.size);
-        if (result != NULL) {
-            (*env)->SetByteArrayRegion(env, result, 0, (jsize)wrt.size, (const jbyte*)wrt.mem);
-        }
+/*
+ * Encodes interleaved BGR bytes (a TYPE_3BYTE_BGR backing array) to a WebP
+ * bitstream. Fast path for ImageIO's most common output format — the byte
+ * order already matches WebPPictureImportBGR, so the image's backing array
+ * is imported directly with no Java-side conversion.
+ */
+JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeBgr
+  (JNIEnv *env, jclass clazz, jbyteArray pixels, jint width, jint height,
+   jfloat quality, jboolean lossless) {
+    if (width <= 0 || height <= 0 ||
+        (jlong)(*env)->GetArrayLength(env, pixels) != (jlong)width * height * 3) {
+        return NULL;
     }
-    WebPMemoryWriterClear(&wrt);
-    return result;
+
+    WebPConfig config;
+    WebPPicture pic;
+    WebPMemoryWriter wrt;
+    if (!SetupEncode(&config, &pic, &wrt, width, height, quality, lossless)) {
+        return NULL;
+    }
+
+    jbyte* p = (*env)->GetPrimitiveArrayCritical(env, pixels, NULL);
+    int imported = 0;
+    if (p != NULL) {
+        imported = WebPPictureImportBGR(&pic, (const uint8_t*)p, width * 3);
+        (*env)->ReleasePrimitiveArrayCritical(env, pixels, p, JNI_ABORT);
+    }
+
+    return FinishEncode(env, &config, &pic, &wrt, imported);
 }
 
 /*

@@ -4,8 +4,10 @@ import java.awt.AlphaComposite;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBuffer;
+import java.awt.image.DataBufferByte;
 import java.awt.image.DataBufferInt;
 import java.awt.image.DirectColorModel;
+import java.awt.image.PixelInterleavedSampleModel;
 import java.awt.image.Raster;
 import java.awt.image.SinglePixelPackedSampleModel;
 import java.awt.image.WritableRaster;
@@ -80,6 +82,50 @@ public final class PixelConverter {
         WritableRaster raster = Raster.createPackedRaster(
                 dataBuffer, width, height, width, colorModel.getMasks(), null);
         return new BufferedImage(colorModel, raster, false, null);
+    }
+
+    /**
+     * Returns the image's live BGR byte backing when it is a plain
+     * {@code TYPE_3BYTE_BGR} raster — ImageIO's most common output for JPEG
+     * and opaque PNG — so it can be fed to libwebp's BGR import without any
+     * conversion; otherwise null.
+     * <p>
+     * Same read-only contract as {@link #toArgbPixels}: the returned array is
+     * the image's live storage and must never be modified.
+     */
+    public static byte[] bgrPixelsOrNull(BufferedImage image) {
+        if (image.getType() != BufferedImage.TYPE_3BYTE_BGR) {
+            return null;
+        }
+        WritableRaster raster = image.getRaster();
+        if (raster.getSampleModelTranslateX() != 0 || raster.getSampleModelTranslateY() != 0) {
+            return null;
+        }
+        if (!(raster.getSampleModel() instanceof PixelInterleavedSampleModel)) {
+            return null;
+        }
+        PixelInterleavedSampleModel sampleModel = (PixelInterleavedSampleModel) raster.getSampleModel();
+        int width = image.getWidth();
+        int height = image.getHeight();
+        if (sampleModel.getPixelStride() != 3 || sampleModel.getScanlineStride() != width * 3
+                || sampleModel.getWidth() != width || sampleModel.getHeight() != height) {
+            return null;
+        }
+        // Band order must be memory order B,G,R (red sample at byte offset 2)
+        int[] bandOffsets = sampleModel.getBandOffsets();
+        if (bandOffsets.length != 3 || bandOffsets[0] != 2 || bandOffsets[1] != 1 || bandOffsets[2] != 0) {
+            return null;
+        }
+        DataBuffer dataBuffer = raster.getDataBuffer();
+        if (!(dataBuffer instanceof DataBufferByte)) {
+            return null;
+        }
+        DataBufferByte byteBuffer = (DataBufferByte) dataBuffer;
+        if (byteBuffer.getNumBanks() != 1 || byteBuffer.getOffset() != 0
+                || byteBuffer.getSize() != width * height * 3) {
+            return null;
+        }
+        return byteBuffer.getData();
     }
 
     /**

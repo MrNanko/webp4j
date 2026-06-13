@@ -41,6 +41,14 @@ JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encod
 
 /*
  * Class:     dev_matrixlab_webp4j_internal_NativeWebP
+ * Method:    encodeBgr
+ * Signature: ([BIIFZ)[B
+ */
+JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeBgr
+  (JNIEnv *, jclass, jbyteArray, jint, jint, jfloat, jboolean);
+
+/*
+ * Class:     dev_matrixlab_webp4j_internal_NativeWebP
  * Method:    decodeInto
  * Signature: ([B[II)Z
  */

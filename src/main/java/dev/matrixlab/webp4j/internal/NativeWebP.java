@@ -54,6 +54,20 @@ public class NativeWebP {
                                        float quality, boolean lossless, boolean hasAlpha);
 
     /**
+     * Encodes interleaved BGR bytes (a TYPE_3BYTE_BGR backing array, length
+     * width * height * 3) to a WebP bitstream via WebPPictureImportBGR.
+     * <p>
+     * Same zero-copy contract as {@link #encode}: the array is pinned, read
+     * directly by libwebp, and never written to.
+     *
+     * @param quality  Quality factor (0-100), ignored when lossless
+     * @param lossless True for lossless encoding
+     * @return WebP encoded bytes, or null on failure
+     */
+    public static native byte[] encodeBgr(byte[] pixels, int width, int height,
+                                          float quality, boolean lossless);
+
+    /**
      * Decodes a WebP bitstream directly into a packed ARGB int[] — libwebp
      * writes BGRA bytes straight into the pinned Java array, so the array can
      * be a BufferedImage's live backing store.

@@ -103,11 +103,18 @@ public final class WebPCodec {
         int height = bufferedImage.getHeight();
         boolean hasAlpha = bufferedImage.getColorModel().hasAlpha();
 
-        // Zero-copy for TYPE_INT_ARGB/TYPE_INT_RGB images: pixels may be the
-        // image's live backing array, so it must never be modified.
-        int[] pixels = PixelConverter.toArgbPixels(bufferedImage, hasAlpha);
-
-        byte[] encodedWebP = NativeWebP.encode(pixels, width, height, quality, lossless, hasAlpha);
+        // Zero-copy paths: the arrays below may be the image's live backing
+        // store, so they must never be modified. TYPE_3BYTE_BGR (ImageIO's
+        // usual output for JPEG and opaque PNG) feeds libwebp's BGR import
+        // directly; TYPE_INT_ARGB/TYPE_INT_RGB feed the BGRA/BGRX import.
+        byte[] encodedWebP;
+        byte[] bgrPixels = hasAlpha ? null : PixelConverter.bgrPixelsOrNull(bufferedImage);
+        if (bgrPixels != null) {
+            encodedWebP = NativeWebP.encodeBgr(bgrPixels, width, height, quality, lossless);
+        } else {
+            int[] pixels = PixelConverter.toArgbPixels(bufferedImage, hasAlpha);
+            encodedWebP = NativeWebP.encode(pixels, width, height, quality, lossless, hasAlpha);
+        }
         if (encodedWebP == null || encodedWebP.length == 0) {
             String encodingType = lossless ? "Lossless" : "Lossy";
             throw new IOException(encodingType + " WebP encoding failed.");
