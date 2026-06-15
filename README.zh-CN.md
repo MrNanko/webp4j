@@ -13,6 +13,7 @@
 - **解码动态 WebP**：从现有动态 WebP 文件中提取帧图像与帧延迟。
 - **帧归一化**：可将不同尺寸的图像统一到相同大小，便于生成动画。
 - 基于 libwebp 提供高效图像压缩与解压。
+- **零拷贝像素管线**：`BufferedImage` 光栅跨越 JNI 边界时不再做中间格式转换（详见[性能](#性能)）。
 - 支持多平台（x64 与 ARM64 架构）。
 - 使用 **JDK 21** 编译，目标字节码为 **Java 8**，以获得更广泛的兼容性。
 - 已发布至 Maven Central 仓库。
@@ -75,14 +76,14 @@ WARNING: Restricted methods will be blocked in a future release unless native ac
 <dependency>
     <groupId>dev.matrixlab.webp4j</groupId>
     <artifactId>webp4j-core</artifactId>
-    <version>2.2.0</version>
+    <version>2.3.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```groovy
-implementation 'dev.matrixlab.webp4j:webp4j-core:2.2.0'
+implementation 'dev.matrixlab.webp4j:webp4j-core:2.3.0'
 ```
 
 ## API 概览
@@ -297,12 +298,24 @@ public void normalizeWithCustomSettings() throws IOException {
 - **无损压缩**：推荐用于 PNG 等无损格式，可在不丢失数据的前提下保留图像质量。
 - **有损压缩**：推荐用于 JPG 等有损格式。不建议对已压缩的 JPG 图像使用无损压缩，因为这通常会增大文件体积且几乎没有画质提升。
 
+## 性能
+
+2.3.0 将 JNI 边界重写为零拷贝像素管线：`BufferedImage` 光栅直接进入 libwebp，不再经过中间格式转换缓冲；解码则直接写入返回图像的背板数组。**分配量是确定性指标** —— 由代码路径决定，下表的降幅在任何机器上都可复现。耗时与硬件相关，所引数据来自一次参考运行（Apple M5 MacBook Pro、GraalVM JDK 21.0.7、JMH `-prof gc`）。
+
+| 操作 | 分配量 vs 2.2.0 | 消除了什么 |
+|---|---|---|
+| 有损编码 | **−98%** | 输入侧 JNI 拷贝 + malloc 循环 + Java 像素转换 |
+| 无损编码 | **−81%** | 同样的输入侧拷贝 |
+| 解码（带透明 / 不透明） | **−50% / −43%** | byte→int 整图转换；峰值 8→4 字节/像素 |
+| 动画编码 / 解码 | **−98% / −50%** | 冗余帧缓冲 |
+
+单遍 GIF 解码器还让**首帧提取快约 60%** —— 合成完第 1 帧即停，不再解码全部帧。完整结果与 JMH 套件见 [`benchmark/`](benchmark/)。
+
 ## 后续计划
 
 - **多线程编码**：动态 WebP 的并行帧编码
 - **批量处理**：优化批量图像转换性能
-- **内存优化**：减少内存分配和 GC 压力
-- **零拷贝优化**：最小化 Java 与原生层之间的数据拷贝
+- **JDK 22+ FFM 后端**：在 JNI 之外提供 Foreign Function & Memory API 路径
 
 ## 其他工具
 

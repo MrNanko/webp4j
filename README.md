@@ -13,6 +13,7 @@
 - **Animated WebP decoding** — extract individual frames and delays from existing animated WebP files.
 - **Frame normalization** for creating animations from images of different sizes.
 - Provides efficient image compression and decompression using libwebp.
+- **Zero-copy pixel pipeline** — BufferedImage rasters cross the JNI boundary without intermediate format conversion (see [Performance](#performance)).
 - Compatible with multiple platforms (supports x86 and ARM).
 - Compiled with **JDK 21** but targets **Java 8 bytecode** for maximum compatibility.
 - Published WebP4j to Maven Central Repository.
@@ -75,14 +76,14 @@ WARNING: Restricted methods will be blocked in a future release unless native ac
 <dependency>
     <groupId>dev.matrixlab.webp4j</groupId>
     <artifactId>webp4j-core</artifactId>
-    <version>2.2.0</version>
+    <version>2.3.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```groovy
-implementation 'dev.matrixlab.webp4j:webp4j-core:2.2.0'
+implementation 'dev.matrixlab.webp4j:webp4j-core:2.3.0'
 ```
 
 ## API Overview
@@ -297,12 +298,24 @@ public void normalizeWithCustomSettings() throws IOException {
 - **Lossless compression**: Recommended for PNG and other lossless image formats to preserve image quality without any data loss.
 - **Lossy compression**: Recommended for JPG and other lossy image formats. Using lossless compression on already-compressed JPG images is not recommended as it may result in larger file sizes without quality benefits.
 
+## Performance
+
+Release 2.3.0 rewrote the JNI bridge into a zero-copy pixel pipeline: `BufferedImage` rasters cross into libwebp without an intermediate format-conversion buffer, and decoding writes straight into the returned image's backing array. **Allocation is deterministic** — fixed by the code path, so the reductions below reproduce on any machine. Timing depends on hardware; the figure cited is from one reference run (Apple M5 MacBook Pro, GraalVM JDK 21.0.7, JMH `-prof gc`).
+
+| Operation | Allocation vs 2.2.0 | What was eliminated |
+|---|---|---|
+| Lossy encode | **−98%** | input-side JNI copy + malloc loop + Java pixel conversion |
+| Lossless encode | **−81%** | same input-side copies |
+| Decode (alpha / opaque) | **−50% / −43%** | byte→int full-image conversion; peak 8→4 bytes/px |
+| Animated encode / decode | **−98% / −50%** | redundant frame buffers |
+
+The single-pass GIF decoder also makes **first-frame extraction ~60% faster** — it stops after composing frame 1 instead of decoding every frame. Full results and the JMH harness are in [`benchmark/`](benchmark/).
+
 ## Future Work
 
 - **Multi-threaded encoding** — Parallel frame encoding for animated WebP
 - **Batch processing** — Optimize bulk image conversion performance
-- **Memory optimization** — Reduce memory allocation and GC pressure
-- **Zero-copy optimization** — Minimize data copying between Java and native layers
+- **JDK 22+ FFM backend** — A Foreign Function & Memory API path alongside JNI
 
 ## Other Utils
 https://onlinegiftools.com/analyze-gif
