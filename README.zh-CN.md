@@ -110,6 +110,18 @@ BufferedImage decodeImage(byte[] webPData) throws IOException;
 int[] getWebPInfo(byte[] webPData) throws IOException;  // 返回 [宽度, 高度]
 ```
 
+### 批量处理
+
+```java
+// 并行批量编解码（保序）。相互独立的图像会在共享内部线程池上并发处理，充分利用多核。
+List<byte[]>        encodeImages(List<BufferedImage> images, float quality, boolean lossless) throws IOException;
+List<BufferedImage> decodeImages(List<byte[]> encodedImages) throws IOException;
+
+// 需要限制或复用线程？用 BatchProcessor 传入你自己的线程池：
+List<byte[]>        BatchProcessor.encodeImages(List<BufferedImage>, float, boolean, ExecutorService) throws IOException;
+List<BufferedImage> BatchProcessor.decodeImages(List<byte[]>, ExecutorService) throws IOException;
+```
+
 ### GIF 转 WebP
 
 ```java
@@ -150,12 +162,12 @@ int getLoopCount();
 // 将帧归一化为统一尺寸（直接使用 FrameNormalizer）
 List<BufferedImage> normalize(List<BufferedImage> frames);
 List<BufferedImage> normalize(
-    List<BufferedImage> frames,
-    Integer targetWidth,
-    Integer targetHeight,
-    FitMode fitMode,
-    boolean allowUpscale,
-    Color background
+        List<BufferedImage> frames,
+        Integer targetWidth,
+        Integer targetHeight,
+        FitMode fitMode,
+        boolean allowUpscale,
+        Color background
 );
 ```
 
@@ -186,6 +198,23 @@ public void decodeFromWebP() throws IOException {
     byte[] webpData = Files.readAllBytes(Paths.get("input.webp"));
     BufferedImage image = WebPCodec.decodeImage(webpData);
     ImageIO.write(image, "png", new File("output.png"));
+}
+```
+
+### 批量处理
+
+```java
+public void encodeBatch(List<BufferedImage> images) throws IOException {
+    // 并行编码所有图像；结果 i 对应输入 i。
+    List<byte[]> webps = WebPCodec.encodeImages(images, 75.0f, false);
+
+    // 批量解码同理。
+    List<BufferedImage> decoded = WebPCodec.decodeImages(webps);
+}
+
+public void encodeBatchWithOwnPool(List<BufferedImage> images, ExecutorService pool) throws IOException {
+    // 传入自己的线程池以复用/限制线程（调用不会关闭该线程池）。
+    List<byte[]> webps = BatchProcessor.encodeImages(images, 75.0f, false, pool);
 }
 ```
 
@@ -314,7 +343,6 @@ public void normalizeWithCustomSettings() throws IOException {
 ## 后续计划
 
 - **多线程编码**：动态 WebP 的并行帧编码
-- **批量处理**：优化批量图像转换性能
 - **JDK 22+ FFM 后端**：在 JNI 之外提供 Foreign Function & Memory API 路径
 
 ## 其他工具
