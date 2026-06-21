@@ -125,9 +125,7 @@ jobs:
           ## WebP4j Release
 
           ### What's Changed
-          - **Zero-copy pixel pipeline** — Reworked the JNI bridge so `BufferedImage` rasters cross into libwebp without an intermediate format-conversion buffer, and decoding writes straight into the returned image's backing array. Deterministic allocation reductions vs 2.2.0: lossy encode **−98%**, lossless encode **−81%**, decode **−50% / −43%** (alpha / opaque), animated encode/decode **−98% / −50%**.
-          - **Zero-copy BGR encode path** — Added a fast path for `TYPE_3BYTE_BGR` images that feeds pixels to libwebp without conversion.
-          - **Single-pass GIF decoding** — GIFs are decoded in one pass with lazy canvas allocation, making first-frame extraction **~60% faster**.
+          - **Batch processing** — Added `BatchProcessor` for parallel, order-preserving encoding and decoding of WebP images across a shared internal pool, with support for a caller-supplied `ExecutorService`. Exposed via convenience methods on `WebPCodec`.
 
           ### Installation
 

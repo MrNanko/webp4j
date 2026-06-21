@@ -2,6 +2,7 @@ package dev.matrixlab.webp4j;
 
 import dev.matrixlab.webp4j.animation.AnimatedWebPDecoder;
 import dev.matrixlab.webp4j.animation.AnimatedWebPEncoder;
+import dev.matrixlab.webp4j.batch.BatchProcessor;
 import dev.matrixlab.webp4j.gif.GifToWebPConfig;
 import dev.matrixlab.webp4j.gif.GifToWebPConverter;
 import dev.matrixlab.webp4j.internal.NativeWebP;
@@ -181,6 +182,57 @@ public final class WebPCodec {
         }
 
         return PixelConverter.wrapPixels(pixels, width, height, hasAlpha);
+    }
+
+    // ============================================
+    // Batch Processing (Delegate to BatchProcessor)
+    // ============================================
+
+    /**
+     * Encodes a list of images to WebP in parallel.
+     * <p>
+     * Independent images are encoded concurrently across a shared internal thread
+     * pool for multi-core speedup. Results are order-preserving: result {@code i}
+     * corresponds to input image {@code i}.
+     * <p>
+     * For control over the thread pool (e.g. to cap or share threads in a server),
+     * call {@link BatchProcessor#encodeImages(List, float, boolean, java.util.concurrent.ExecutorService)}
+     * directly.
+     * <p>
+     * Example usage:
+     * <pre>{@code
+     * List<BufferedImage> images = Arrays.asList(img1, img2, img3);
+     * List<byte[]> webps = WebPCodec.encodeImages(images, 75, false);
+     * }</pre>
+     *
+     * @param images   List of images to encode (null or empty yields an empty list)
+     * @param quality  Quality factor (0-100), ignored when lossless
+     * @param lossless True for lossless encoding, false for lossy
+     * @return An immutable list of encoded WebP byte arrays, one per input image, in order
+     * @throws IOException              If encoding any image fails (names the failing index)
+     * @throws IllegalArgumentException If any image element is null
+     */
+    public static List<byte[]> encodeImages(List<BufferedImage> images, float quality, boolean lossless) throws IOException {
+        return BatchProcessor.encodeImages(images, quality, lossless);
+    }
+
+    /**
+     * Decodes a list of WebP byte arrays into images in parallel.
+     * <p>
+     * Independent images are decoded concurrently across a shared internal thread
+     * pool. Results are order-preserving: result {@code i} corresponds to input
+     * array {@code i}.
+     * <p>
+     * For control over the thread pool, call
+     * {@link BatchProcessor#decodeImages(List, java.util.concurrent.ExecutorService)} directly.
+     *
+     * @param encodedImages List of WebP-encoded byte arrays (null or empty yields an empty list)
+     * @return An immutable list of decoded images, one per input array, in order
+     * @throws IOException              If decoding any array fails (names the failing index)
+     * @throws IllegalArgumentException If any element is null
+     */
+    public static List<BufferedImage> decodeImages(List<byte[]> encodedImages) throws IOException {
+        return BatchProcessor.decodeImages(encodedImages);
     }
 
     // ============================================

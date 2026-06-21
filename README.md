@@ -110,6 +110,19 @@ BufferedImage decodeImage(byte[] webPData) throws IOException;
 int[] getWebPInfo(byte[] webPData) throws IOException;  // Returns [width, height]
 ```
 
+### Batch Processing
+
+```java
+// Parallel bulk encode/decode (order-preserving). Independent images are
+// processed concurrently across a shared internal pool for multi-core speedup.
+List<byte[]>        encodeImages(List<BufferedImage> images, float quality, boolean lossless) throws IOException;
+List<BufferedImage> decodeImages(List<byte[]> encodedImages) throws IOException;
+
+// Need to cap or share threads? Use BatchProcessor with your own executor:
+List<byte[]>        BatchProcessor.encodeImages(List<BufferedImage>, float, boolean, ExecutorService) throws IOException;
+List<BufferedImage> BatchProcessor.decodeImages(List<byte[]>, ExecutorService) throws IOException;
+```
+
 ### GIF to WebP Conversion
 
 ```java
@@ -186,6 +199,23 @@ public void decodeFromWebP() throws IOException {
     byte[] webpData = Files.readAllBytes(Paths.get("input.webp"));
     BufferedImage image = WebPCodec.decodeImage(webpData);
     ImageIO.write(image, "png", new File("output.png"));
+}
+```
+
+### Batch Processing
+
+```java
+public void encodeBatch(List<BufferedImage> images) throws IOException {
+    // Encodes all images in parallel; result i corresponds to input i.
+    List<byte[]> webps = WebPCodec.encodeImages(images, 75.0f, false);
+
+    // Decode many at once the same way.
+    List<BufferedImage> decoded = WebPCodec.decodeImages(webps);
+}
+
+public void encodeBatchWithOwnPool(List<BufferedImage> images, ExecutorService pool) throws IOException {
+    // Reuse/cap threads by passing your own executor (never shut down by the call).
+    List<byte[]> webps = BatchProcessor.encodeImages(images, 75.0f, false, pool);
 }
 ```
 
@@ -314,10 +344,10 @@ The single-pass GIF decoder also makes **first-frame extraction ~60% faster** �
 ## Future Work
 
 - **Multi-threaded encoding** — Parallel frame encoding for animated WebP
-- **Batch processing** — Optimize bulk image conversion performance
 - **JDK 22+ FFM backend** — A Foreign Function & Memory API path alongside JNI
 
 ## Other Utils
+
 https://onlinegiftools.com/analyze-gif
 
 ## License
