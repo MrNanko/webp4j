@@ -8,7 +8,7 @@
   <packaging>jar</packaging>
 
   <name>webp4j</name>
-  <description>WebP4j is a Java library based on JNI that supports WebP image encoding/decoding, GIF to WebP conversion, and animated WebP creation with both lossless and lossy compression.</description>
+  <description>WebP4j is a high-performance Java library, powered by JNI bindings to Google's libwebp, for encoding and decoding WebP images. It also supports converting GIFs to WebP, building animated WebP files, and choosing between lossless and lossy compression.</description>
   <url>https://github.com/MrNanko/webp4j</url>
 
   <licenses>
@@ -100,7 +100,7 @@
       <plugin>
         <groupId>org.sonatype.central</groupId>
         <artifactId>central-publishing-maven-plugin</artifactId>
-        <version>0.5.0</version>
+        <version>0.11.0</version>
         <extensions>true</extensions>
         <configuration>
           <publishingServerId>ossrh</publishingServerId>
