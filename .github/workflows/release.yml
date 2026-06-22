@@ -23,49 +23,49 @@ jobs:
   # ============================================
   # Publish to Maven Central
   # ============================================
-  publish-maven:
-    name: Publish to Maven Central
-    runs-on: ubuntu-latest
-    needs: build-natives
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Setup Java for Maven Central
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: ${{ env.JAVA_VERSION }}
-        cache: 'maven'
-        server-id: 'ossrh'
-        server-username: OSSRH_USERNAME
-        server-password: OSSRH_PASSWORD
-        gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
-        gpg-passphrase: GPG_PASSPHRASE
-
-    - name: Download all native artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: webp4j-all-platforms
-        path: src/main/resources/native
-
-    - name: Display native libraries
-      run: |
-        echo "Native files:" && ls -lh src/main/resources/native || true
-
-    - name: Build and package JAR
-      run: |
-        mvn -B clean package -DskipTests
-        echo "JAR contents:" && jar tf target/webp4j-*.jar | grep native/ || true
-
-    - name: Publish to Maven Central
-      env:
-        OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
-        OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
-        GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-      run: |
-        mvn -B deploy -DskipTests
+#  publish-maven:
+#    name: Publish to Maven Central
+#    runs-on: ubuntu-latest
+#    needs: build-natives
+#
+#    steps:
+#    - name: Checkout code
+#      uses: actions/checkout@v4
+#
+#    - name: Setup Java for Maven Central
+#      uses: actions/setup-java@v4
+#      with:
+#        distribution: 'temurin'
+#        java-version: ${{ env.JAVA_VERSION }}
+#        cache: 'maven'
+#        server-id: 'ossrh'
+#        server-username: OSSRH_USERNAME
+#        server-password: OSSRH_PASSWORD
+#        gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+#        gpg-passphrase: GPG_PASSPHRASE
+#
+#    - name: Download all native artifacts
+#      uses: actions/download-artifact@v4
+#      with:
+#        name: webp4j-all-platforms
+#        path: src/main/resources/native
+#
+#    - name: Display native libraries
+#      run: |
+#        echo "Native files:" && ls -lh src/main/resources/native || true
+#
+#    - name: Build and package JAR
+#      run: |
+#        mvn -B clean package -DskipTests
+#        echo "JAR contents:" && jar tf target/webp4j-*.jar | grep native/ || true
+#
+#    - name: Publish to Maven Central
+#      env:
+#        OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+#        OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+#        GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+#      run: |
+#        mvn -B deploy -DskipTests
 
   # ============================================
   # Create GitHub Release
