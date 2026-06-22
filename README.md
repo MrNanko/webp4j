@@ -76,14 +76,14 @@ WARNING: Restricted methods will be blocked in a future release unless native ac
 <dependency>
     <groupId>dev.matrixlab.webp4j</groupId>
     <artifactId>webp4j-core</artifactId>
-    <version>2.3.0</version>
+    <version>2.4.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```groovy
-implementation 'dev.matrixlab.webp4j:webp4j-core:2.3.0'
+implementation 'dev.matrixlab.webp4j:webp4j-core:2.4.0'
 ```
 
 ## API Overview
