@@ -31,12 +31,12 @@ jobs:
             packages: mingw-w64-clang-aarch64-clang mingw-w64-clang-aarch64-cmake mingw-w64-clang-aarch64-make
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         submodules: recursive
 
     - name: Setup Java
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         distribution: 'temurin'
         java-version: ${{ env.JAVA_VERSION }}
@@ -57,7 +57,7 @@ jobs:
         mingw32-make install
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: webp4j-windows-${{ matrix.arch }}
         path: src/main/resources/native/webp4j-windows-${{ matrix.arch }}.dll
@@ -77,12 +77,12 @@ jobs:
             arch: arm64
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         submodules: recursive
 
     - name: Setup Java
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         distribution: 'temurin'
         java-version: ${{ env.JAVA_VERSION }}
@@ -98,7 +98,7 @@ jobs:
         make install
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: webp4j-mac-${{ matrix.arch }}
         path: src/main/resources/native/libwebp4j-mac-${{ matrix.arch }}.dylib
@@ -122,12 +122,12 @@ jobs:
             artifact-path: src/main/resources/native/libwebp4j-linux-aarch64.so
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
       with:
         submodules: recursive
 
     - name: Setup Java
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         distribution: 'temurin'
         java-version: ${{ env.JAVA_VERSION }}
@@ -145,7 +145,7 @@ jobs:
         make install
 
     - name: Upload artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: webp4j-linux-${{ matrix.arch }}
         path: ${{ matrix.artifact-path }}
@@ -165,7 +165,7 @@ jobs:
 
     steps:
     - name: Download all artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v5
       with:
         pattern: webp4j-*
         path: native-libraries
@@ -180,7 +180,7 @@ jobs:
         ls -lh collected/
 
     - name: Upload collected libraries
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: webp4j-all-platforms
         path: collected/
@@ -193,7 +193,7 @@ jobs:
         cat SHA256SUMS
 
     - name: Upload checksum
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v5
       with:
         name: webp4j-checksums
         path: collected/SHA256SUMS

@@ -30,10 +30,10 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Setup Java for Maven Central
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         distribution: 'temurin'
         java-version: ${{ env.JAVA_VERSION }}
@@ -45,7 +45,7 @@ jobs:
         gpg-passphrase: GPG_PASSPHRASE
 
     - name: Download all native artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v5
       with:
         name: webp4j-all-platforms
         path: src/main/resources/native
@@ -78,21 +78,21 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Extract version without 'v' prefix
       id: version
       run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
     - name: Setup Java
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         distribution: 'temurin'
         java-version: ${{ env.JAVA_VERSION }}
         cache: 'maven'
 
     - name: Download all native artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v5
       with:
         name: webp4j-all-platforms
         path: src/main/resources/native
@@ -115,7 +115,7 @@ jobs:
         cat SHA256SUMS
 
     - name: Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         files: release-files/*
         generate_release_notes: true
