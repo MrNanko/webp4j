@@ -11,6 +11,7 @@
 - **GIF 转 WebP**：使用原生 giflib 解码器，并提供 Java ImageIO 回退方案。
 - **创建动态 WebP**：从 `BufferedImage` 帧列表生成动态 WebP。
 - **解码动态 WebP**：从现有动态 WebP 文件中提取帧图像与帧延迟。
+- **多线程编码**：libwebp 对每帧压缩进行并行化（`thread_level`），在动态 WebP 与 GIF→WebP 上带来多核加速（**10 核 M5 上动画编码快约 42%**，详见[性能](#性能)）；输出保持逐比特一致。默认启用，可通过 `GifToWebPConfig.setMultiThreaded(...)` 切换。
 - **帧归一化**：可将不同尺寸的图像统一到相同大小，便于生成动画。
 - 基于 libwebp 提供高效图像压缩与解压。
 - **零拷贝像素管线**：`BufferedImage` 光栅跨越 JNI 边界时不再做中间格式转换（详见[性能](#性能)）。
@@ -265,7 +266,8 @@ public void createAnimatedWebP() throws IOException {
     // 设置帧延迟（毫秒/帧）
     int[] delays = {100, 100, 100};
 
-    // 创建动态 WebP
+    // 创建动态 WebP。默认对每帧压缩进行多线程处理（libwebp thread_level）；
+    // 输出与单线程完全一致，只是在多核机器上更快。可用 setMultiThreaded(false) 关闭。
     GifToWebPConfig config = GifToWebPConfig.createLosslessConfig();
     byte[] webp = WebPCodec.createAnimatedWebP(frames, delays, config);
 
@@ -338,11 +340,23 @@ public void normalizeWithCustomSettings() throws IOException {
 | 解码（带透明 / 不透明） | **−50% / −43%** | byte→int 整图转换；峰值 8→4 字节/像素 |
 | 动画编码 / 解码 | **−98% / −50%** | 冗余帧缓冲 |
 
-单遍 GIF 解码器还让**首帧提取快约 60%** —— 合成完第 1 帧即停，不再解码全部帧。完整结果与 JMH 套件见 [`benchmark/`](benchmark/)。
+单遍 GIF 解码器还让**首帧提取快约 60%** —— 合成完第 1 帧即停，不再解码全部帧。
+
+### 多线程动画编码
+
+如果说 2.3.0 的零拷贝管线消除的是*内存*，多线程编码（libwebp `thread_level`，默认开启）消除的就是*时间* —— 两个维度相互独立、可叠加。启用后，**动画编码耗时降低约 42%**，而输出比特流与分配量与单线程**逐字节完全一致**：
+
+| `encodeAnimated`（20 帧 × 256²，有损 q=75） | 单线程 | 多线程 | Δ |
+|---|---|---|---|
+| 耗时 | 172 ms | 99 ms | **−42%** |
+| 分配量 | 121 KB | 121 KB | 不变 |
+
+> 参考运行：10 核 Apple M5、GraalVM JDK 21.0.7、JMH `-prof gc`。该加速在全部五次测量迭代中均复现（97–103 ms vs 恒定的 172 ms）。
+
+收益随**核心数与帧尺寸**增长：`thread_level` 在*每帧内部*并行化压缩（而非跨帧 —— `WebPAnimEncoder` 按顺序添加帧），因此帧越大、核心越多收益越明显，而极小帧或 1–2 核机器可能收益甚微甚至为负。不要将它与 `BatchProcessor` 叠加使用，后者已通过每线程编码一张图像榨满所有核心（其内部传入 `multiThreaded=false` 以避免超额订阅）。
 
 ## 后续计划
 
-- **多线程编码**：动态 WebP 的并行帧编码
 - **JDK 22+ FFM 后端**：在 JNI 之外提供 Foreign Function & Memory API 路径
 
 ## 其他工具
