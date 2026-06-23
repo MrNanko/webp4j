@@ -96,6 +96,30 @@ public final class WebPCodec {
      * @throws IllegalArgumentException If bufferedImage is null.
      */
     public static byte[] encodeImage(BufferedImage bufferedImage, float quality, boolean lossless) throws IOException {
+        return encodeImage(bufferedImage, quality, lossless, true);
+    }
+
+    /**
+     * Encodes an RGB/RGBA BufferedImage to a WebP encoded byte array, with
+     * explicit control over libwebp's multi-threaded encoding.
+     * <p>
+     * {@code multiThreaded} maps to libwebp's {@code thread_level}: it is a pure
+     * speed knob (output is bit-identical, only faster on multi-core machines).
+     * It defaults to {@code true} in the three-argument overload. Disable it when
+     * the caller already parallelizes across images — e.g. {@link BatchProcessor}
+     * runs one image per pool thread and passes {@code false} here to avoid
+     * oversubscribing the CPU.
+     *
+     * @param bufferedImage The input BufferedImage in RGB/RGBA format.
+     * @param quality       The WebP quality parameter (0-100). Ignored when lossless is true.
+     * @param lossless      True for lossless encoding, false for lossy encoding.
+     * @param multiThreaded True to let libwebp multi-thread this encode.
+     * @return A byte array containing the WebP encoded data.
+     * @throws IOException              If an error occurs during image conversion or encoding.
+     * @throws IllegalArgumentException If bufferedImage is null.
+     */
+    public static byte[] encodeImage(BufferedImage bufferedImage, float quality, boolean lossless,
+                                     boolean multiThreaded) throws IOException {
         if (bufferedImage == null) {
             throw new IllegalArgumentException("The input BufferedImage cannot be null.");
         }
@@ -111,10 +135,10 @@ public final class WebPCodec {
         byte[] encodedWebP;
         byte[] bgrPixels = hasAlpha ? null : PixelConverter.bgrPixelsOrNull(bufferedImage);
         if (bgrPixels != null) {
-            encodedWebP = NativeWebP.encodeBgr(bgrPixels, width, height, quality, lossless);
+            encodedWebP = NativeWebP.encodeBgr(bgrPixels, width, height, quality, lossless, multiThreaded);
         } else {
             int[] pixels = PixelConverter.toArgbPixels(bufferedImage, hasAlpha);
-            encodedWebP = NativeWebP.encode(pixels, width, height, quality, lossless, hasAlpha);
+            encodedWebP = NativeWebP.encode(pixels, width, height, quality, lossless, hasAlpha, multiThreaded);
         }
         if (encodedWebP == null || encodedWebP.length == 0) {
             String encodingType = lossless ? "Lossless" : "Lossy";

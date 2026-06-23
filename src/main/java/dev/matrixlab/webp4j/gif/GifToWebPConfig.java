@@ -20,6 +20,7 @@ public class GifToWebPConfig {
     private int kmax = 17;
     private boolean minimizeSize = false;
     private boolean allowMixed = false;
+    private boolean multiThreaded = true;
 
     /**
      * Gets the quality factor for lossy compression.
@@ -220,6 +221,33 @@ public class GifToWebPConfig {
      */
     public GifToWebPConfig setAllowMixed(boolean allowMixed) {
         this.allowMixed = allowMixed;
+        return this;
+    }
+
+    /**
+     * Checks if multi-threaded encoding is enabled.
+     *
+     * @return true if libwebp multi-threads each frame's encode
+     */
+    public boolean isMultiThreaded() {
+        return multiThreaded;
+    }
+
+    /**
+     * Sets whether libwebp may use multiple threads to encode each frame
+     * (libwebp's {@code thread_level}, the same knob as {@code gif2webp -mt}).
+     * <p>
+     * This is a pure speed knob: the output bitstream is bit-identical to
+     * single-threaded encoding, only faster on multi-core machines. Frames are
+     * still assembled in order — the parallelism is <em>within</em> each frame's
+     * VP8 compression, so frame-to-frame dependencies are preserved. Enabled by
+     * default.
+     *
+     * @param multiThreaded true to enable multi-threaded frame encoding
+     * @return This config instance for method chaining
+     */
+    public GifToWebPConfig setMultiThreaded(boolean multiThreaded) {
+        this.multiThreaded = multiThreaded;
         return this;
     }
 

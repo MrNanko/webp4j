@@ -213,11 +213,15 @@ JNIEXPORT jint JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_getFeatures
  * pic.use_argb = lossless.
  */
 static int SetupEncode(WebPConfig* config, WebPPicture* pic, WebPMemoryWriter* wrt,
-                       jint width, jint height, jfloat quality, jboolean lossless) {
+                       jint width, jint height, jfloat quality, jboolean lossless,
+                       jboolean multiThreaded) {
     if (!WebPConfigPreset(config, WEBP_PRESET_DEFAULT, lossless ? 70.f : quality)) {
         return 0;
     }
     config->lossless = lossless ? 1 : 0;
+    /* thread_level is a pure speed knob: libwebp parallelizes the encode
+     * internally and the output bitstream is bit-identical to single-threaded. */
+    config->thread_level = multiThreaded ? 1 : 0;
 
     if (!WebPPictureInit(pic)) {
         return 0;
@@ -262,7 +266,7 @@ static jbyteArray FinishEncode(JNIEnv* env, WebPConfig* config, WebPPicture* pic
  */
 JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encode
   (JNIEnv *env, jclass clazz, jintArray pixels, jint width, jint height,
-   jfloat quality, jboolean lossless, jboolean hasAlpha) {
+   jfloat quality, jboolean lossless, jboolean hasAlpha, jboolean multiThreaded) {
     if (width <= 0 || height <= 0 ||
         (jlong)(*env)->GetArrayLength(env, pixels) != (jlong)width * height) {
         return NULL;
@@ -271,7 +275,7 @@ JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encod
     WebPConfig config;
     WebPPicture pic;
     WebPMemoryWriter wrt;
-    if (!SetupEncode(&config, &pic, &wrt, width, height, quality, lossless)) {
+    if (!SetupEncode(&config, &pic, &wrt, width, height, quality, lossless, multiThreaded)) {
         return NULL;
     }
 
@@ -295,7 +299,7 @@ JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encod
  */
 JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeBgr
   (JNIEnv *env, jclass clazz, jbyteArray pixels, jint width, jint height,
-   jfloat quality, jboolean lossless) {
+   jfloat quality, jboolean lossless, jboolean multiThreaded) {
     if (width <= 0 || height <= 0 ||
         (jlong)(*env)->GetArrayLength(env, pixels) != (jlong)width * height * 3) {
         return NULL;
@@ -304,7 +308,7 @@ JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encod
     WebPConfig config;
     WebPPicture pic;
     WebPMemoryWriter wrt;
-    if (!SetupEncode(&config, &pic, &wrt, width, height, quality, lossless)) {
+    if (!SetupEncode(&config, &pic, &wrt, width, height, quality, lossless, multiThreaded)) {
         return NULL;
     }
 
@@ -424,7 +428,8 @@ static jbyteArray EncodeStaticRGBA(JNIEnv* env, const uint8_t* rgba,
 JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeGifToWebP
   (JNIEnv *env, jclass clazz, jbyteArray gifData, jfloat quality,
    jboolean lossless, jint compressionMethod, jboolean extractFirstFrameOnly,
-   jint loopCount, jint kmin, jint kmax, jboolean minimizeSize, jboolean allowMixed) {
+   jint loopCount, jint kmin, jint kmax, jboolean minimizeSize, jboolean allowMixed,
+   jboolean multiThreaded) {
 #ifdef HAVE_GIFLIB
     jsize data_size = (*env)->GetArrayLength(env, gifData);
     jbyte* gif_bytes = (*env)->GetByteArrayElements(env, gifData, NULL);
@@ -493,6 +498,7 @@ JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encod
     config.lossless = lossless ? 1 : 0;
     config.quality = quality;
     config.method = compressionMethod;
+    config.thread_level = multiThreaded ? 1 : 0;  /* multi-thread each frame's encode */
     if (!WebPValidateConfig(&config)) {
         goto cleanup;
     }
@@ -561,7 +567,7 @@ cleanup:
 JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeAnimated
   (JNIEnv *env, jclass clazz, jobjectArray frames, jintArray delays, jint width, jint height,
    jfloat quality, jboolean lossless, jint compressionMethod, jint loopCount,
-   jint kmin, jint kmax, jboolean minimizeSize, jboolean allowMixed) {
+   jint kmin, jint kmax, jboolean minimizeSize, jboolean allowMixed, jboolean multiThreaded) {
     jsize frame_count = (*env)->GetArrayLength(env, frames);
     if (frame_count == 0 || width <= 0 || height <= 0 ||
         (*env)->GetArrayLength(env, delays) < frame_count) {
@@ -602,6 +608,7 @@ JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encod
     config.lossless = lossless ? 1 : 0;
     config.quality = quality;
     config.method = compressionMethod;
+    config.thread_level = multiThreaded ? 1 : 0;  /* multi-thread each frame's encode */
     if (!WebPValidateConfig(&config)) {
         goto cleanup;
     }

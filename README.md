@@ -11,6 +11,7 @@
 - **GIF to WebP conversion** with native giflib decoder and Java ImageIO fallback.
 - **Animated WebP creation** from BufferedImage frames.
 - **Animated WebP decoding** — extract individual frames and delays from existing animated WebP files.
+- **Multi-threaded encoding** — libwebp parallelizes each frame's compression (`thread_level`) for a multi-core speedup on animated WebP and GIF→WebP (**~42% faster animated encode** on a 10-core M5, see [Performance](#performance)); output stays bit-identical. Enabled by default, toggle with `GifToWebPConfig.setMultiThreaded(...)`.
 - **Frame normalization** for creating animations from images of different sizes.
 - Provides efficient image compression and decompression using libwebp.
 - **Zero-copy pixel pipeline** — BufferedImage rasters cross the JNI boundary without intermediate format conversion (see [Performance](#performance)).
@@ -76,14 +77,14 @@ WARNING: Restricted methods will be blocked in a future release unless native ac
 <dependency>
     <groupId>dev.matrixlab.webp4j</groupId>
     <artifactId>webp4j-core</artifactId>
-    <version>2.4.0</version>
+    <version>2.5.0</version>
 </dependency>
 ```
 
 ### Gradle
 
 ```groovy
-implementation 'dev.matrixlab.webp4j:webp4j-core:2.4.0'
+implementation 'dev.matrixlab.webp4j:webp4j-core:2.5.0'
 ```
 
 ## API Overview
@@ -266,7 +267,9 @@ public void createAnimatedWebP() throws IOException {
     // Set delays (milliseconds per frame)
     int[] delays = {100, 100, 100};
 
-    // Create animated WebP
+    // Create animated WebP. Each frame's compression is multi-threaded by
+    // default (libwebp thread_level); the output is identical to single-threaded,
+    // just faster on multi-core machines. Disable with setMultiThreaded(false).
     GifToWebPConfig config = GifToWebPConfig.createLosslessConfig();
     byte[] webp = WebPCodec.createAnimatedWebP(frames, delays, config);
 
@@ -339,11 +342,23 @@ Release 2.3.0 rewrote the JNI bridge into a zero-copy pixel pipeline: `BufferedI
 | Decode (alpha / opaque) | **−50% / −43%** | byte→int full-image conversion; peak 8→4 bytes/px |
 | Animated encode / decode | **−98% / −50%** | redundant frame buffers |
 
-The single-pass GIF decoder also makes **first-frame extraction ~60% faster** — it stops after composing frame 1 instead of decoding every frame. Full results and the JMH harness are in [`benchmark/`](benchmark/).
+The single-pass GIF decoder also makes **first-frame extraction ~60% faster** — it stops after composing frame 1 instead of decoding every frame.
+
+### Multi-threaded animated encoding
+
+Where 2.3.0's zero-copy pipeline removed the *memory*, multi-threaded encoding (libwebp `thread_level`, on by default) removes the *time* — the two axes are independent and stack. Enabling it cuts **animated-encode time by ~42%** while the output bitstream and allocation stay **byte-for-byte identical** to single-threaded:
+
+| `encodeAnimated` (20 frames × 256², lossy q=75) | Single-threaded | Multi-threaded | Δ |
+|---|---|---|---|
+| Time | 172 ms | 99 ms | **−42%** |
+| Allocation | 121 KB | 121 KB | unchanged |
+
+> Reference run: 10-core Apple M5, GraalVM JDK 21.0.7, JMH `-prof gc`. The speedup reproduced across all five measured iterations (97–103 ms vs a flat 172 ms).
+
+The win scales with **core count and frame size**: `thread_level` parallelizes *within* each frame's compression (not across frames — `WebPAnimEncoder` adds frames in order), so larger frames and more cores help most, while tiny frames or 1–2 core machines may see little or negative benefit. Don't stack it with `BatchProcessor`, which already saturates cores by encoding one image per thread (it passes `multiThreaded=false` internally to avoid oversubscription).
 
 ## Future Work
 
-- **Multi-threaded encoding** — Parallel frame encoding for animated WebP
 - **JDK 22+ FFM backend** — A Foreign Function & Memory API path alongside JNI
 
 ## Other Utils

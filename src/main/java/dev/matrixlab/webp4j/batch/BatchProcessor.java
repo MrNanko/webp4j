@@ -108,7 +108,10 @@ public final class BatchProcessor {
                 throw new IllegalArgumentException("Image at index " + i + " is null");
             }
         }
-        return runBatch(executor, images.size(), index -> WebPCodec.encodeImage(images.get(index), quality, lossless));
+        // multiThreaded=false: the batch already runs one image per pool thread,
+        // so letting libwebp also multi-thread each encode would oversubscribe the CPU.
+        return runBatch(executor, images.size(),
+                index -> WebPCodec.encodeImage(images.get(index), quality, lossless, false));
     }
 
     // ============================================

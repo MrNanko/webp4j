@@ -563,6 +563,48 @@ class WebP4jTest {
     }
 
     /**
+     * Multi-threaded animated encoding (libwebp thread_level) is a pure speed
+     * knob: enabling it must not change the output. This encodes the same frames
+     * with multiThreaded on and off and asserts the bitstreams are byte-identical.
+     */
+    @Test
+    void testAnimatedMultiThreadedMatchesSingleThreaded() throws IOException {
+        int width = 160;
+        int height = 120;
+        int frameCount = 6;
+        Color[] colors = {Color.RED, Color.GREEN, Color.BLUE, Color.YELLOW, Color.MAGENTA, Color.CYAN};
+
+        List<BufferedImage> frames = new ArrayList<>();
+        int[] delays = new int[frameCount];
+        for (int i = 0; i < frameCount; i++) {
+            BufferedImage frame = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g2d = frame.createGraphics();
+            g2d.setColor(colors[i]);
+            g2d.fillRect(0, 0, width, height);
+            // A non-uniform region so frame diffs are non-trivial for the encoder.
+            g2d.setColor(colors[(i + 1) % frameCount]);
+            g2d.fillRect(width / 4, height / 4, width / 2, height / 2);
+            g2d.dispose();
+            frames.add(frame);
+            delays[i] = 80;
+        }
+
+        // multiThreaded defaults to true; assert the documented default explicitly.
+        assertTrue(new GifToWebPConfig().isMultiThreaded(), "multiThreaded should default to true");
+
+        GifToWebPConfig mt = GifToWebPConfig.createLosslessConfig().setMultiThreaded(true);
+        GifToWebPConfig st = GifToWebPConfig.createLosslessConfig().setMultiThreaded(false);
+
+        byte[] multi = WebPCodec.createAnimatedWebP(frames, delays, mt);
+        byte[] single = WebPCodec.createAnimatedWebP(frames, delays, st);
+
+        assertNotNull(multi, "Multi-threaded animated WebP should not be null");
+        assertNotNull(single, "Single-threaded animated WebP should not be null");
+        assertArrayEquals(single, multi,
+                "thread_level must not change the output: multi- and single-threaded encodes must be byte-identical");
+    }
+
+    /**
      * Test method for decoding animated WebP back into individual frames.
      * This is a round-trip test: create animated WebP -> decode -> verify frames.
      */

@@ -34,18 +34,18 @@ JNIEXPORT jint JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_getFeatures
 /*
  * Class:     dev_matrixlab_webp4j_internal_NativeWebP
  * Method:    encode
- * Signature: ([IIIFZZ)[B
+ * Signature: ([IIIFZZZ)[B
  */
 JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encode
-  (JNIEnv *, jclass, jintArray, jint, jint, jfloat, jboolean, jboolean);
+  (JNIEnv *, jclass, jintArray, jint, jint, jfloat, jboolean, jboolean, jboolean);
 
 /*
  * Class:     dev_matrixlab_webp4j_internal_NativeWebP
  * Method:    encodeBgr
- * Signature: ([BIIFZ)[B
+ * Signature: ([BIIFZZ)[B
  */
 JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeBgr
-  (JNIEnv *, jclass, jbyteArray, jint, jint, jfloat, jboolean);
+  (JNIEnv *, jclass, jbyteArray, jint, jint, jfloat, jboolean, jboolean);
 
 /*
  * Class:     dev_matrixlab_webp4j_internal_NativeWebP
@@ -66,18 +66,18 @@ JNIEXPORT jboolean JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_getGifI
 /*
  * Class:     dev_matrixlab_webp4j_internal_NativeWebP
  * Method:    encodeGifToWebP
- * Signature: ([BFZIZIIIZZ)[B
+ * Signature: ([BFZIZIIIZZZ)[B
  */
 JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeGifToWebP
-  (JNIEnv *, jclass, jbyteArray, jfloat, jboolean, jint, jboolean, jint, jint, jint, jboolean, jboolean);
+  (JNIEnv *, jclass, jbyteArray, jfloat, jboolean, jint, jboolean, jint, jint, jint, jboolean, jboolean, jboolean);
 
 /*
  * Class:     dev_matrixlab_webp4j_internal_NativeWebP
  * Method:    encodeAnimated
- * Signature: ([[I[IIIFZIIIIZZ)[B
+ * Signature: ([[I[IIIFZIIIIZZZ)[B
  */
 JNIEXPORT jbyteArray JNICALL Java_dev_matrixlab_webp4j_internal_NativeWebP_encodeAnimated
-  (JNIEnv *, jclass, jobjectArray, jintArray, jint, jint, jfloat, jboolean, jint, jint, jint, jint, jboolean, jboolean);
+  (JNIEnv *, jclass, jobjectArray, jintArray, jint, jint, jfloat, jboolean, jint, jint, jint, jint, jboolean, jboolean, jboolean);
 
 /*
  * Class:     dev_matrixlab_webp4j_internal_NativeWebP

@@ -48,10 +48,13 @@ public class NativeWebP {
      * @param quality  Quality factor (0-100), ignored when lossless
      * @param lossless True for lossless encoding
      * @param hasAlpha False to ignore the alpha byte of each pixel
+     * @param multiThreaded True to let libwebp multi-thread the encode
+     *                      (thread_level=1); output is bit-identical, only faster
      * @return WebP encoded bytes, or null on failure
      */
     public static native byte[] encode(int[] pixels, int width, int height,
-                                       float quality, boolean lossless, boolean hasAlpha);
+                                       float quality, boolean lossless, boolean hasAlpha,
+                                       boolean multiThreaded);
 
     /**
      * Encodes interleaved BGR bytes (a TYPE_3BYTE_BGR backing array, length
@@ -62,10 +65,12 @@ public class NativeWebP {
      *
      * @param quality  Quality factor (0-100), ignored when lossless
      * @param lossless True for lossless encoding
+     * @param multiThreaded True to let libwebp multi-thread the encode
+     *                      (thread_level=1); output is bit-identical, only faster
      * @return WebP encoded bytes, or null on failure
      */
     public static native byte[] encodeBgr(byte[] pixels, int width, int height,
-                                          float quality, boolean lossless);
+                                          float quality, boolean lossless, boolean multiThreaded);
 
     /**
      * Decodes a WebP bitstream directly into a packed ARGB int[] — libwebp
@@ -105,6 +110,7 @@ public class NativeWebP {
      * @param kmax Maximum key-frame distance
      * @param minimizeSize True to minimize output size
      * @param allowMixed True to allow mixed compression
+     * @param multiThreaded True to multi-thread each frame's encode (thread_level=1)
      * @return WebP encoded byte array, or null on failure
      */
     public static native byte[] encodeGifToWebP(
@@ -117,7 +123,8 @@ public class NativeWebP {
             int kmin,
             int kmax,
             boolean minimizeSize,
-            boolean allowMixed
+            boolean allowMixed,
+            boolean multiThreaded
     );
 
     /**
@@ -140,6 +147,8 @@ public class NativeWebP {
      * @param kmax Maximum key-frame distance
      * @param minimizeSize True to minimize output size
      * @param allowMixed True to allow mixed compression
+     * @param multiThreaded True to multi-thread each frame's encode (thread_level=1);
+     *                      frames are still added in order, output is bit-identical
      * @return WebP encoded byte array, or null on failure
      */
     public static native byte[] encodeAnimated(
@@ -154,7 +163,8 @@ public class NativeWebP {
             int kmin,
             int kmax,
             boolean minimizeSize,
-            boolean allowMixed
+            boolean allowMixed,
+            boolean multiThreaded
     );
 
     /**

@@ -118,7 +118,8 @@ public final class GifToWebPConverter {
                     config.getKmin(),
                     config.getKmax(),
                     config.isMinimizeSize(),
-                    config.isAllowMixed()
+                    config.isAllowMixed(),
+                    config.isMultiThreaded()
             );
 
             if (result != null && result.length > 0) {
@@ -170,7 +171,8 @@ public final class GifToWebPConverter {
         if (config.isExtractFirstFrameOnly() || gif.frames.size() == 1) {
             // Static GIF or extract first frame only: use existing single-frame encoding
             BufferedImage firstFrame = gif.frames.get(0).image;
-            return encodeSingleFrame(firstFrame, config.getQuality(), config.isLossless());
+            return encodeSingleFrame(firstFrame, config.getQuality(), config.isLossless(),
+                    config.isMultiThreaded());
         }
 
         // Animated GIF: encode all frames using native WebPAnimEncoder
@@ -203,7 +205,8 @@ public final class GifToWebPConverter {
                 config.getKmin(),
                 config.getKmax(),
                 config.isMinimizeSize(),
-                config.isAllowMixed()
+                config.isAllowMixed(),
+                config.isMultiThreaded()
         );
 
         if (result == null || result.length == 0) {
@@ -216,11 +219,13 @@ public final class GifToWebPConverter {
     /**
      * Encodes a single BufferedImage frame to WebP.
      */
-    private static byte[] encodeSingleFrame(BufferedImage image, float quality, boolean lossless) throws IOException {
+    private static byte[] encodeSingleFrame(BufferedImage image, float quality, boolean lossless,
+                                            boolean multiThreaded) throws IOException {
         boolean hasAlpha = image.getColorModel().hasAlpha();
         int[] pixels = PixelConverter.toArgbPixels(image, hasAlpha);
 
-        byte[] result = NativeWebP.encode(pixels, image.getWidth(), image.getHeight(), quality, lossless, hasAlpha);
+        byte[] result = NativeWebP.encode(pixels, image.getWidth(), image.getHeight(), quality, lossless,
+                hasAlpha, multiThreaded);
         if (result == null || result.length == 0) {
             throw new IOException("WebP encoding failed.");
         }

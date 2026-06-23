@@ -125,7 +125,7 @@ jobs:
           ## WebP4j Release
 
           ### What's Changed
-          - **Batch processing** — Added `BatchProcessor` for parallel, order-preserving encoding and decoding of WebP images across a shared internal pool, with support for a caller-supplied `ExecutorService`. Exposed via convenience methods on `WebPCodec`.
+          - **Multi-threaded encoding** — Animated WebP and GIF→WebP now multi-thread each frame's compression via libwebp's `thread_level`, for a multi-core speedup with bit-identical output. Enabled by default and configurable through `GifToWebPConfig.setMultiThreaded(...)`; single-image encoding exposes the same knob via a new `WebPCodec.encodeImage(image, quality, lossless, multiThreaded)` overload.
 
           ### Installation
 

@@ -88,7 +88,8 @@ public final class AnimatedWebPEncoder {
                 config.getKmin(),
                 config.getKmax(),
                 config.isMinimizeSize(),
-                config.isAllowMixed()
+                config.isAllowMixed(),
+                config.isMultiThreaded()
         );
 
         if (result == null || result.length == 0) {
