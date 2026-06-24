@@ -4,6 +4,10 @@
 
 **WebP4j** is a Java library based on JNI (Java Native Interface) that supports WebP image encoding/decoding with both lossless and lossy compression, GIF to WebP conversion, and animated WebP creation and decoding. This project utilizes Google's [libwebp](https://developers.google.com/speed/webp) library (version 1.6.0) and exposes its functionality to Java applications.
 
+> ⭐ **If WebP4j is helpful to you, please consider giving it a star!** A single click helps more people discover the project. Every star means a lot to me and motivates me to keep maintaining and improving it. [**Star on GitHub →**](https://github.com/MrNanko/webp4j)
+>
+> [![GitHub stars](https://img.shields.io/github/stars/MrNanko/webp4j?style=social)](https://github.com/MrNanko/webp4j/stargazers)
+
 ## Features
 
 - Supports WebP encoding of RGB and RGBA images with both lossy and lossless compression.
