@@ -5,8 +5,6 @@
 **WebP4j** 是一个基于 JNI（Java Native Interface）的 Java 库，支持 WebP 图像的有损/无损编解码、GIF 转 WebP，以及动态 WebP（动画 WebP）的创建与解码。本项目基于 Google 的 [libwebp](https://developers.google.com/speed/webp)（版本 1.6.0），并将其封装为 Java API。
 
 > ⭐ **如果 WebP4j 对你有帮助，请点个 Star 支持一下！** 让更多人发现这个项目。每一颗 Star 对我都意义非凡，也是我坚持维护、不断前进的动力。[**前往 GitHub 点 Star →**](https://github.com/MrNanko/webp4j)
->
-> [![GitHub stars](https://img.shields.io/github/stars/MrNanko/webp4j?style=social)](https://github.com/MrNanko/webp4j/stargazers)
 
 ## 功能特性
 
