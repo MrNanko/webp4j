@@ -116,12 +116,16 @@ public final class WebPCodec {
      * @param multiThreaded True to let libwebp multi-thread this encode.
      * @return A byte array containing the WebP encoded data.
      * @throws IOException              If an error occurs during image conversion or encoding.
-     * @throws IllegalArgumentException If bufferedImage is null.
+     * @throws IllegalArgumentException If bufferedImage is null, or quality is outside 0-100 for lossy encoding.
      */
     public static byte[] encodeImage(BufferedImage bufferedImage, float quality, boolean lossless,
                                      boolean multiThreaded) throws IOException {
         if (bufferedImage == null) {
             throw new IllegalArgumentException("The input BufferedImage cannot be null.");
+        }
+
+        if (!lossless && (quality < 0f || quality > 100f)) {
+            throw new IllegalArgumentException("Quality must be between 0 and 100, but was " + quality + ".");
         }
 
         int width = bufferedImage.getWidth();
