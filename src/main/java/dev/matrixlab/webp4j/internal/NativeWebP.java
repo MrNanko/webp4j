@@ -13,6 +13,12 @@ public class NativeWebP {
      */
     private static final Throwable UNAVAILABILITY_CAUSE;
 
+    /**
+     * The libwebp version captured during the load-time smoke test (e.g.
+     * 0x010600 for 1.6.0), or 0 if the native library is unavailable.
+     */
+    private static final int LIBWEBP_VERSION;
+
     private NativeWebP() {
         throw new AssertionError("Cannot instantiate utility class.");
     }
@@ -197,6 +203,31 @@ public class NativeWebP {
     }
 
     /**
+     * Returns the raw libwebp version number bundled with this library, encoded
+     * as {@code 0xMMmmpp} (e.g. {@code 0x010600} for 1.6.0).
+     *
+     * @return the version number, or 0 if the native library is unavailable
+     */
+    public static int libWebPVersionNumber() {
+        return LIBWEBP_VERSION;
+    }
+
+    /**
+     * Returns the libwebp version bundled with this library as a
+     * {@code "major.minor.patch"} string (e.g. {@code "1.6.0"}).
+     *
+     * @return the formatted version, or null if the native library is unavailable
+     */
+    public static String libWebPVersion() {
+        if (LIBWEBP_VERSION <= 0) {
+            return null;
+        }
+        return ((LIBWEBP_VERSION >> 16) & 0xff) + "."
+                + ((LIBWEBP_VERSION >> 8) & 0xff) + "."
+                + (LIBWEBP_VERSION & 0xff);
+    }
+
+    /**
      * Returns the cause of unavailability if the native library failed to load.
      * <p>
      * This is useful for debugging when WebP support is not available.
@@ -216,13 +247,14 @@ public class NativeWebP {
     // Static initializer: attempt to load the native library when class is loaded
     static {
         Throwable cause = null;
+        int version = 0;
         try {
             // Load the native library
             NativeLibraryLoader.loadLibrary();
 
             // Perform smoke test - verify JNI bindings work correctly
             // This ensures not just that the library loaded, but that native methods are callable
-            int version = getLibWebPVersion();
+            version = getLibWebPVersion();
             if (version <= 0) {
                 throw new IllegalStateException("Invalid libwebp version: " + version);
             }
@@ -234,8 +266,10 @@ public class NativeWebP {
             // - LinkageError: UnsatisfiedLinkError (native method not found) and other linking errors
             // - Exception: IO errors, security exceptions, etc.
             cause = e;
+            version = 0;
         }
         UNAVAILABILITY_CAUSE = cause;
+        LIBWEBP_VERSION = version;
     }
 
 }

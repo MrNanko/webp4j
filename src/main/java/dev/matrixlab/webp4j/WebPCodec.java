@@ -63,6 +63,20 @@ public final class WebPCodec {
         return NativeWebP.isAvailable();
     }
 
+    /**
+     * Returns the version of the bundled libwebp native library as a
+     * {@code "major.minor.patch"} string (e.g. {@code "1.6.0"}).
+     * <p>
+     * The version is captured once when the native library loads, so this is a
+     * cheap field read with no native call.
+     *
+     * @return the libwebp version, or null if WebP support is unavailable on
+     *         this platform (see {@link #isAvailable()})
+     */
+    public static String libWebPVersion() {
+        return NativeWebP.libWebPVersion();
+    }
+
     // ============================================
     // Static Image Encoding/Decoding
     // ============================================
