@@ -96,6 +96,10 @@ implementation 'dev.matrixlab.webp4j:webp4j-core:2.5.0'
 ```java
 // 检查当前平台是否受支持
 boolean isAvailable();
+
+// 返回内置 libwebp 本地库的版本号，例如 "1.6.0"
+// （当前平台不支持 WebP 时返回 null）
+String libWebPVersion();
 ```
 
 ### 静态图像编解码

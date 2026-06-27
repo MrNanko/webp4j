@@ -96,6 +96,10 @@ implementation 'dev.matrixlab.webp4j:webp4j-core:2.5.0'
 ```java
 // Check if the current platform is supported
 boolean isAvailable();
+
+// Version of the bundled libwebp native library, e.g. "1.6.0"
+// (returns null when WebP support is unavailable on this platform)
+String libWebPVersion();
 ```
 
 ### Static Image Encoding/Decoding
